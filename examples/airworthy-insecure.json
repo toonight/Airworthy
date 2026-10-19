@@ -3,7 +3,7 @@
     "Name": "Airworthy",
     "Version": "0.2.0"
   },
-  "ScannedAt": "2026-10-19T05:57:37Z",
+  "ScannedAt": "2026-10-19T13:28:26Z",
   "Root": "insecure",
   "Harnesses": [
     "vscode-copilot",
@@ -94,7 +94,7 @@
       "Severity": "critical",
       "Category": "approvals",
       "Harness": "codex",
-      "Description": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies).",
+      "Description": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User, project and system config files are checked in the documented precedence: the project .codex/config.toml files from the project root down to the working folder (the closest wins) \u003e user config \u003e system config, each Codex home on its own; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies).",
       "Evidence": "approval_policy = \"never\" (project config); with sandbox_mode = \"danger-full-access\" (project config): no sandbox and no approval",
       "Location": {
         "Path": ".codex\\config.toml",
@@ -290,7 +290,7 @@
       "Severity": "high",
       "Category": "sandbox-network",
       "Harness": "codex",
-      "Description": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).",
+      "Description": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User, project (the .codex/config.toml of the root and of the folders below it) and system config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).",
       "Evidence": "sandbox_mode = \"danger-full-access\" (project config)",
       "Location": {
         "Path": ".codex\\config.toml",
@@ -789,7 +789,7 @@
       "Severity": "medium",
       "Category": "sandbox-network",
       "Harness": "codex",
-      "Description": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes).",
+      "Description": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User, project and system config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes).",
       "Evidence": "web_search = \"live\" (project config)",
       "Location": {
         "Path": ".codex\\config.toml",
@@ -811,7 +811,7 @@
       "Severity": "medium",
       "Category": "mcp-supply-chain",
       "Harness": "codex",
-      "Description": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks, project config over user config) or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.",
+      "Description": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml files (the root one and those of the folders below it, which load in their folder). They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks) in every folder and Codex home where the hooks load, in the precedence of AW-CDX-002 (nested project config \u003e project config \u003e user config \u003e system config), or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.",
       "Evidence": "hook SessionStart command: ./scripts/bootstrap.sh",
       "Location": {
         "Path": ".codex\\config.toml",
@@ -983,7 +983,7 @@
       "Severity": "low",
       "Category": "secrets",
       "Harness": "codex",
-      "Description": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore_default_excludes = false or a filter restricts the variables.",
+      "Description": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project, profile and system config files and is silent when ignore_default_excludes = false or a filter restricts the variables.",
       "Evidence": "shell_environment_policy.inherit = \"all\", no exclude or include filter, ignore_default_excludes not set (default true) (project config)",
       "Location": {
         "Path": ".codex\\config.toml",
@@ -1464,7 +1464,7 @@
       "Severity": "high",
       "Category": "sandbox-network",
       "Harness": "codex",
-      "Description": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).",
+      "Description": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User, project (the .codex/config.toml of the root and of the folders below it) and system config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).",
       "Fix": "Use sandbox_mode = \"workspace-write\" (or default_permissions = \":workspace\") and grant extra folders or network access explicitly. Keep danger-full-access for a container or VM that is already isolated, and enforce the limit with allowed_sandbox_modes or allowed_permission_profiles in requirements.toml.",
       "References": [
         "OWASP-ASI05",
@@ -1481,7 +1481,7 @@
       "Severity": "medium",
       "Category": "approvals",
       "Harness": "codex",
-      "Description": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies).",
+      "Description": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User, project and system config files are checked in the documented precedence: the project .codex/config.toml files from the project root down to the working folder (the closest wins) \u003e user config \u003e system config, each Codex home on its own; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies).",
       "Fix": "Use approval_policy = \"on-request\" (or a granular table that keeps the prompts you need), and never combine \"never\" with danger-full-access outside an isolated container or VM. Restrict the allowed values with allowed_approval_policies in requirements.toml.",
       "References": [
         "OWASP-ASI02",
@@ -1496,7 +1496,7 @@
       "Severity": "medium",
       "Category": "sandbox-network",
       "Harness": "codex",
-      "Description": "sandbox_workspace_write.network_access = true allows outbound network access inside the workspace-write sandbox, which keeps it off by default. Every command the agent runs without a prompt can then download code or send workspace content, credentials included, to any host. The rule checks user and project config files, with project config over user config, and is silent when the sandbox mode that applies is read-only or danger-full-access (AW-CDX-001), and when the layers use permission profiles instead: default_permissions is set and no loaded config file sets sandbox_mode, or requirements.toml has allowed_permission_profiles. The two systems do not compose, so Codex then ignores [sandbox_workspace_write]; the network of a permission profile is checked by AW-CDX-004.",
+      "Description": "sandbox_workspace_write.network_access = true allows outbound network access inside the workspace-write sandbox, which keeps it off by default. Every command the agent runs without a prompt can then download code or send workspace content, credentials included, to any host. The rule checks user, project and system config files, in the precedence of AW-CDX-002 (nested project config \u003e project config \u003e user config \u003e system config), and is silent when the sandbox mode that applies is read-only or danger-full-access (AW-CDX-001), and when the layers use permission profiles instead: default_permissions is set and no loaded config file sets sandbox_mode, or requirements.toml has allowed_permission_profiles. The two systems do not compose, so Codex then ignores [sandbox_workspace_write]; the network of a permission profile is checked by AW-CDX-004.",
       "Fix": "Remove network_access (default false) and approve network access per command, or use a permission profile with the network proxy and an allowlist of domains (permissions.\u003cname\u003e.network.domains).",
       "References": [
         "OWASP-ASI02",
@@ -1561,7 +1561,7 @@
       "Severity": "low",
       "Category": "secrets",
       "Harness": "codex",
-      "Description": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore_default_excludes = false or a filter restricts the variables.",
+      "Description": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project, profile and system config files and is silent when ignore_default_excludes = false or a filter restricts the variables.",
       "Fix": "Use inherit = \"core\" (or \"none\"), set ignore_default_excludes = false, and add [shell_environment_policy.filters] entries that exclude the secrets the commands do not need.",
       "References": [
         "OWASP-ASI03",
@@ -1623,7 +1623,7 @@
       "Severity": "medium",
       "Category": "sandbox-network",
       "Harness": "codex",
-      "Description": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes).",
+      "Description": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User, project and system config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes).",
       "Fix": "Keep web_search = \"cached\" (the default), or \"indexed\", and use live search only in sessions that need it (--search). Restrict it with allowed_web_search_modes in requirements.toml.",
       "References": [
         "OWASP-ASI01",
@@ -1639,7 +1639,7 @@
       "Severity": "medium",
       "Category": "mcp-supply-chain",
       "Harness": "codex",
-      "Description": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks, project config over user config) or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.",
+      "Description": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml files (the root one and those of the folders below it, which load in their folder). They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks) in every folder and Codex home where the hooks load, in the precedence of AW-CDX-002 (nested project config \u003e project config \u003e user config \u003e system config), or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.",
       "Fix": "Review every hook command and the scripts it calls before you trust it, protect .codex/ with CODEOWNERS and required reviews, and keep personal hooks in ~/.codex/hooks.json. Set allow_managed_hooks_only = true in requirements.toml where repository hooks are not needed.",
       "References": [
         "OWASP-ASI04",
@@ -1671,7 +1671,7 @@
       "Severity": "medium",
       "Category": "sandbox-network",
       "Harness": "codex",
-      "Description": "Checks the profile files (\u003ccodex home\u003e/\u003cname\u003e.config.toml, selected with --profile \u003cname\u003e) for settings that weaken the defaults: sandbox_mode = \"danger-full-access\", default_permissions = \":danger-full-access\", approval_policy = \"never\", sandbox_workspace_write.network_access = true and web_search = \"live\". One --profile flag then switches a session to that configuration. A profile is evaluated with the layers it applies with, in the documented precedence project config \u003e profile \u003e user config: the config.toml of its Codex home below it, alone and under each project .codex/config.toml. A profile setting counts only where it applies (sandbox_mode in any of these files takes precedence over default_permissions, and [sandbox_workspace_write] is ignored with permission profiles). The finding is high when, with the profile, neither the sandbox nor the approvals remain, whichever of these files removes each one (the evidence names the other file); it is not when requirements.toml forbids the value. Legacy [profiles.\u003cname\u003e] tables of the user config.toml are reported as low: Codex 0.134.0 and later no longer read them.",
+      "Description": "Checks the profile files (\u003ccodex home\u003e/\u003cname\u003e.config.toml, selected with --profile \u003cname\u003e) for settings that weaken the defaults: sandbox_mode = \"danger-full-access\", default_permissions = \":danger-full-access\", approval_policy = \"never\", sandbox_workspace_write.network_access = true and web_search = \"live\". One --profile flag then switches a session to that configuration. A profile is evaluated with the layers it applies with, in the documented precedence project config \u003e profile \u003e user config \u003e system config: the config.toml of its Codex home and the system config below it, alone and under the project .codex/config.toml files of each folder (the root one and the nested ones, closest first). A profile setting counts only where it applies (sandbox_mode in any of these files takes precedence over default_permissions, and [sandbox_workspace_write] is ignored with permission profiles). The finding is high when, with the profile, neither the sandbox nor the approvals remain, whichever of these files removes each one (the evidence names the other file); it is not when requirements.toml forbids the value. Legacy [profiles.\u003cname\u003e] tables of the user config.toml are reported as low: Codex 0.134.0 and later no longer read them.",
       "Fix": "Remove the weakening settings from the profile, or delete the profile, and run sessions that need broad access only inside an isolated container or VM. Delete legacy [profiles.\u003cname\u003e] tables from config.toml.",
       "References": [
         "OWASP-ASI02",

@@ -9,7 +9,18 @@ $script:AwMaxTotalBytes   = 32MB   # read budget for one analysis (hostile repos
 $script:AwManagedSettingsOverride = $null
 # Test hook: when set, replaces the machine-wide Codex requirements.toml candidates.
 $script:AwCodexRequirementsOverride = $null
+# Test hook: when set, replaces the Codex system config.toml candidates (/etc/codex/config.toml on Unix).
+$script:AwCodexSystemConfigOverride = $null
 $script:AwCodexProfileNamePattern = '^[A-Za-z0-9_-]+\.config\.toml$'
+# Nested Codex project layers (<folder>/.codex/config.toml below the root): folder levels searched,
+# files read, and folders examined by the search.
+$script:AwCodexMaxNestedDepth  = 6
+$script:AwCodexMaxNestedLayers = 50
+$script:AwCodexMaxNestedDirs   = 10000
+# Folders the nested search never enters: version control, dependencies, build output, virtual
+# environments and caches, and .codex folders themselves.
+$script:AwCodexSkippedDirs = @('.git', '.hg', '.svn', '.codex', 'node_modules', 'bower_components', 'jspm_packages',
+    'vendor', 'dist', 'build', 'out', 'target', '.venv', 'venv', '__pycache__', '.tox', '.gradle', '.next', '.nuxt')
 
 function Add-AwDiscoveryError {
     param($State, [string]$Path, [string]$Message, $Line = $null, [string]$Harness = 'generic')
@@ -202,6 +213,77 @@ function Get-AwCodexRequirementsCandidates {
         return @([System.IO.Path]::Combine([System.IO.Path]::Combine([System.IO.Path]::Combine($pd, 'OpenAI'), 'Codex'), 'requirements.toml'))
     }
     return @('/etc/codex/requirements.toml')
+}
+
+function Get-AwCodexSystemConfigCandidates {
+    # System config.toml, the lowest config layer (config-basic, learn.chatgpt.com: "/etc/codex/config.toml
+    # on Unix"). No Windows location is documented, so none is read there.
+    if ($null -ne $script:AwCodexSystemConfigOverride) { return @($script:AwCodexSystemConfigOverride) }
+    if ($script:AwIsWindowsOS) { return @() }
+    return @('/etc/codex/config.toml')
+}
+
+function Test-AwLinkDirectory {
+    # True for a folder that is a symbolic link or junction. Other reparse points (cloud
+    # placeholders, for example) are ordinary folders, as in Test-AwSafePath.
+    param([System.IO.DirectoryInfo]$Dir)
+    if (($Dir.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { return $false }
+    $item = Get-Item -LiteralPath $Dir.FullName -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item) { return $true }
+    $linkType = [string]$item.LinkType
+    return ($linkType -eq 'SymbolicLink' -or $linkType -eq 'Junction')
+}
+
+function Get-AwCodexNestedConfigs {
+    <#
+    Nested Codex project config files: <folder>/.codex/config.toml in the folders below Root, at
+    most AwCodexMaxNestedDepth levels down. Codex loads the .codex/config.toml of every folder from
+    the project root down to the working folder (config-advanced, learn.chatgpt.com). The search is
+    breadth first, in ordinal name order, so the result is deterministic and a folder always comes
+    after its parents. It never enters AwCodexSkippedDirs, links or junctions, and stops after
+    AwCodexMaxNestedLayers files or AwCodexMaxNestedDirs folders (AW-CORE-001). The files are read
+    later with the usual limits (Read-AwSafeText).
+    #>
+    param($State, [string]$Root)
+    $found = New-Object System.Collections.Generic.List[string]
+    $dirs = New-Object System.Collections.Generic.List[string]
+    $depths = New-Object System.Collections.Generic.List[int]
+    $dirs.Add($Root); $depths.Add(0)
+    $full = $false
+    for ($i = 0; $i -lt $dirs.Count; $i++) {
+        $dir = $dirs[$i]
+        $depth = $depths[$i]
+        if ($depth -gt 0) {
+            $cfg = [System.IO.Path]::Combine([System.IO.Path]::Combine($dir, '.codex'), 'config.toml')
+            if ([System.IO.File]::Exists($cfg)) {
+                if ($found.Count -ge $script:AwCodexMaxNestedLayers) {
+                    Add-AwDiscoveryError $State $Root ('More than {0} nested .codex/config.toml files; only the first {0} were analyzed.' -f $script:AwCodexMaxNestedLayers) $null 'codex'
+                    break
+                }
+                $found.Add($cfg)
+            }
+        }
+        # Once the folder budget is used up, the folders already queued are still checked.
+        if ($full -or $depth -ge $script:AwCodexMaxNestedDepth) { continue }
+        $subs = $null
+        try { $subs = (New-Object System.IO.DirectoryInfo -ArgumentList $dir).GetDirectories() } catch { $subs = $null }
+        if ($null -eq $subs -or $subs.Length -eq 0) { continue }
+        $names = New-Object string[] $subs.Length
+        for ($k = 0; $k -lt $subs.Length; $k++) { $names[$k] = $subs[$k].Name }
+        [Array]::Sort($names, $subs, [StringComparer]::Ordinal)
+        foreach ($s in $subs) {
+            $skip = $false
+            foreach ($x in $script:AwCodexSkippedDirs) { if ([string]::Equals($s.Name, $x, [StringComparison]::OrdinalIgnoreCase)) { $skip = $true; break } }
+            if ($skip -or (Test-AwLinkDirectory $s)) { continue }
+            if ($dirs.Count -gt $script:AwCodexMaxNestedDirs) {
+                Add-AwDiscoveryError $State $Root ('Stopped looking for nested .codex/config.toml files after {0} folders.' -f $script:AwCodexMaxNestedDirs) $null 'codex'
+                $full = $true
+                break
+            }
+            $dirs.Add($s.FullName); $depths.Add($depth + 1)
+        }
+    }
+    return $found.ToArray()
 }
 
 function Get-AwCodexHomes {
@@ -481,9 +563,10 @@ function New-AwContext {
 
     # --- Codex CLI ----------------------------------------------------------------------
     # config-basic, config-advanced, hooks, rules and managed-configuration (learn.chatgpt.com):
-    # user ~/.codex/config.toml (or $CODEX_HOME), project .codex/config.toml, profile files
-    # <codex home>/<name>.config.toml, machine-wide requirements.toml, project .codex/hooks.json
-    # and project .codex/rules/*.rules.
+    # user ~/.codex/config.toml (or $CODEX_HOME), project .codex/config.toml of the root and of
+    # the folders below it, profile files <codex home>/<name>.config.toml, machine-wide
+    # requirements.toml, system config.toml (Unix), project .codex/hooks.json and project
+    # .codex/rules/*.rules.
     $codex = New-Object System.Collections.ArrayList
     $codexRules = New-Object System.Collections.ArrayList
     $codexHomes = @(Get-AwCodexHomes -UserProfile $userProfile -IsRealProfile $isRealProfile)
@@ -494,6 +577,7 @@ function New-AwContext {
     }
     foreach ($h in $codexHomes) { & $addToml ([System.IO.Path]::Combine($h, 'config.toml')) 'user' $true }
     & $addToml (& $inRoot '.codex\config.toml') 'project' $false
+    foreach ($f in (Get-AwCodexNestedConfigs -State $state -Root $root)) { & $addToml $f 'project' $false }
     foreach ($h in $codexHomes) {
         foreach ($f in (Get-AwMatchingFiles $state $h '*.config.toml')) {
             $leaf = $f.Substring($f.LastIndexOfAny([char[]]@('\', '/')) + 1)
@@ -502,6 +586,9 @@ function New-AwContext {
     }
     if ($userProfile -and ($isRealProfile -or $null -ne $script:AwCodexRequirementsOverride)) {
         foreach ($m in (Get-AwCodexRequirementsCandidates)) { & $addToml $m 'managed' $true }
+    }
+    if ($userProfile -and ($isRealProfile -or $null -ne $script:AwCodexSystemConfigOverride)) {
+        foreach ($m in (Get-AwCodexSystemConfigCandidates)) { & $addToml $m 'system' $true }
     }
     foreach ($a in $codex) {
         if ($a.Scope -eq 'managed') { continue }

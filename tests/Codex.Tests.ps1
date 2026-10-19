@@ -1,5 +1,6 @@
-# Tests for Codex CLI support: discovery (src/Core/Discovery.ps1), the mapping of Codex MCP servers
-# into Ctx.McpFiles, and the rules of src/Rules/Codex.ps1 (AW-CDX-001 to AW-CDX-014).
+# Tests for Codex CLI support: discovery (src/Core/Discovery.ps1, nested project layers and the system
+# config included), the mapping of Codex MCP servers into Ctx.McpFiles, and the rules of
+# src/Rules/Codex.ps1 (AW-CDX-001 to AW-CDX-014) with their layer stacks.
 # Every secret below is FAKE; the ones of the fixtures are listed in fixtures\codex\strings.json.
 $aw = Get-Module Airworthy
 $fixtures = Join-Path $PSScriptRoot 'fixtures'
@@ -37,13 +38,13 @@ function New-CdxTree {
 }
 
 function New-CdxCase {
-    # A project folder, and a user profile folder when user files or requirements are given.
-    param([string]$User, [string]$Project, [hashtable]$UserFiles, [hashtable]$ProjectFiles, [string]$Requirements)
+    # A project folder, and a user profile folder when user files, requirements or a system config are given.
+    param([string]$User, [string]$Project, [hashtable]$UserFiles, [hashtable]$ProjectFiles, [string]$Requirements, [string]$System)
     $pf = @{ 'README.md' = 'synthetic' }
     if ($Project) { $pf['.codex\config.toml'] = $Project }
     if ($ProjectFiles) { foreach ($k in $ProjectFiles.Keys) { $pf[$k] = $ProjectFiles[$k] } }
     $userDir = $null
-    if ($User -or $UserFiles -or $Requirements) {
+    if ($User -or $UserFiles -or $Requirements -or $System) {
         $uf = @{ 'placeholder.txt' = 'synthetic' }
         if ($User) { $uf['.codex\config.toml'] = $User }
         if ($UserFiles) { foreach ($k in $UserFiles.Keys) { $uf[$k] = $UserFiles[$k] } }
@@ -51,21 +52,27 @@ function New-CdxCase {
     }
     $req = $null
     if ($Requirements) { $req = Join-Path (New-CdxTree @{ 'requirements.toml' = $Requirements }) 'requirements.toml' }
-    [pscustomobject]@{ Root = (New-CdxTree $pf); User = $userDir; Requirements = $req }
+    $sys = $null
+    if ($System) { $sys = Join-Path (New-CdxTree @{ 'config.toml' = $System }) 'config.toml' }
+    [pscustomobject]@{ Root = (New-CdxTree $pf); User = $userDir; Requirements = $req; System = $sys }
 }
 
 function Get-CdxContext {
-    # The analysis context of a case; requirements.toml is read through the test hook.
+    # The analysis context of a case; requirements.toml and the system config.toml are read through the test hooks.
     param($Case)
+    $sys = $null
+    if ($Case.PSObject.Properties['System']) { $sys = $Case.System }
     & $aw {
-        param($r, $u, $q)
+        param($r, $u, $q, $s)
         $script:AwCodexRequirementsOverride = if ($q) { @($q) } else { $null }
+        $script:AwCodexSystemConfigOverride = if ($s) { @($s) } else { $null }
         try {
             if ($u) { New-AwContext -Path $r -UserProfilePath $u } else { New-AwContext -Path $r -NoUserProfile }
         } finally {
             $script:AwCodexRequirementsOverride = $null
+            $script:AwCodexSystemConfigOverride = $null
         }
-    } $Case.Root $Case.User $Case.Requirements
+    } $Case.Root $Case.User $Case.Requirements $sys
 }
 
 function Invoke-CdxCheck {
@@ -80,8 +87,8 @@ function Invoke-CdxCheck {
 
 function Invoke-CdxRule {
     # Runs one rule on a case built from TOML texts.
-    param([string]$RuleId, [string]$User, [string]$Project, [hashtable]$UserFiles, [hashtable]$ProjectFiles, [string]$Requirements)
-    $case = New-CdxCase -User $User -Project $Project -UserFiles $UserFiles -ProjectFiles $ProjectFiles -Requirements $Requirements
+    param([string]$RuleId, [string]$User, [string]$Project, [hashtable]$UserFiles, [hashtable]$ProjectFiles, [string]$Requirements, [string]$System)
+    $case = New-CdxCase -User $User -Project $Project -UserFiles $UserFiles -ProjectFiles $ProjectFiles -Requirements $Requirements -System $System
     Invoke-CdxCheck $RuleId (Get-CdxContext $case)
 }
 
@@ -89,6 +96,27 @@ function Invoke-CdxFixture {
     # Runs one rule on fixture folders.
     param([string]$RuleId, [string]$Root, [string]$User, [string]$Requirements)
     Invoke-CdxCheck $RuleId (Get-CdxContext ([pscustomobject]@{ Root = $Root; User = $User; Requirements = $Requirements }))
+}
+
+function New-CdxJunction {
+    # A junction at Path to Target; $false when the file system does not allow it.
+    param([string]$Path, [string]$Target)
+    try {
+        [void](New-Item -ItemType Junction -Path $Path -Target $Target -ErrorAction Stop)
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Join-CdxHomes {
+    # A copy of Ctx whose user config files are those of the given contexts, in order: what
+    # discovery returns for two Codex homes (CODEX_HOME first, then ~/.codex).
+    param($Ctx, [object[]]$HomeContexts)
+    $users = @(foreach ($c in $HomeContexts) { @($c.Codex | Where-Object { $_.Scope -eq 'user' }) })
+    $copy = $Ctx.PSObject.Copy()
+    $copy.Codex = @($users + @($Ctx.Codex | Where-Object { $_.Scope -ne 'user' }))
+    return $copy
 }
 
 function Get-Evidence($Findings) { return ,[string[]]@($Findings | ForEach-Object { $_.Evidence }) }
@@ -789,6 +817,284 @@ try {
             $ctx = Get-CdxContext (New-CdxCase -User (Toml 'model = "gpt-fake"'))
             Assert-Equal 0 @($ctx.McpFiles).Count
             Assert-NotContains $ctx.Harnesses 'mcp'
+        }
+    }
+
+    Describe 'Codex nested project layers and system config: discovery' {
+        It 'reads the .codex/config.toml of the folders below the root, breadth first, within the depth limit' {
+            $case = New-CdxCase -Project (Toml 'model = "root"') -ProjectFiles @{
+                'packages\app\.codex\config.toml'            = (Toml 'model = "app"')
+                'packages\.codex\config.toml'                = (Toml 'model = "packages"')
+                'Zeta\.codex\config.toml'                    = (Toml 'model = "zeta"')
+                'a\b\c\d\e\f\.codex\config.toml'             = (Toml 'model = "depth6"')
+                'a\b\c\d\e\f\g\.codex\config.toml'           = (Toml 'model = "depth7"')
+                'node_modules\pkg\.codex\config.toml'        = (Toml 'model = "node_modules"')
+                'Build\.codex\config.toml'                   = (Toml 'model = "build"')
+                'vendor\lib\.codex\config.toml'              = (Toml 'model = "vendor"')
+                '.git\.codex\config.toml'                    = (Toml 'model = "git"')
+                '.venv\x\.codex\config.toml'                 = (Toml 'model = "venv"')
+                'packages\app\.codex\inner\.codex\config.toml' = (Toml 'model = "inside-codex"')
+                'packages\app\notes\config.toml'             = (Toml 'model = "not-a-layer"')
+            }
+            $ctx = Get-CdxContext $case
+            Assert-Equal @('root', 'zeta', 'packages', 'app', 'depth6') @($ctx.Codex | ForEach-Object { $_.Data['model'] })
+            Assert-Equal @('project', 'project', 'project', 'project', 'project') @($ctx.Codex | ForEach-Object { $_.Scope })
+            Assert-Equal (Join-Path $case.Root 'packages\app\.codex\config.toml') $ctx.Codex[3].Path
+            foreach ($a in $ctx.Codex) {
+                Assert-Equal @('Path', 'Scope', 'Harness', 'Raw', 'Data') @($a.PSObject.Properties.Name)
+                Assert-Contains $ctx.TextFiles $a.Path
+            }
+            Assert-Equal 0 @($ctx.Errors).Count
+            Assert-Contains $ctx.Harnesses 'codex'
+        }
+        It 'detects Codex from a nested config file alone, and maps its MCP servers' {
+            $case = New-CdxCase -ProjectFiles @{ 'svc\api\.codex\config.toml' = (Toml '[mcp_servers.nested]' 'url = "http://nested.example.invalid/mcp"') }
+            $ctx = Get-CdxContext $case
+            Assert-Contains $ctx.Harnesses 'codex'
+            Assert-Contains $ctx.Harnesses 'mcp'
+            $mcp = @($ctx.McpFiles | Where-Object { $_.Harness -eq 'codex' })
+            Assert-Equal 1 $mcp.Count
+            Assert-Equal 'project' $mcp[0].Scope
+            Assert-Equal (Join-Path $case.Root 'svc\api\.codex\config.toml') $mcp[0].Path
+            Assert-Equal @('nested') @($mcp[0].Data['Servers'].Keys)
+            $r = Invoke-Airworthy -Path $case.Root -NoUserProfile -PassThru -Quiet
+            $http = @($r.Findings | Where-Object { $_.RuleId -eq 'AW-MCP-003' })
+            Assert-Equal 1 $http.Count
+            Assert-Match $http[0].Location.Path '\\svc\\api\\\.codex\\config\.toml$'
+            Assert-Equal 1 $http[0].Location.Line
+        }
+        It 'caps the nested files and the folders searched, with AW-CORE-001' {
+            $files = @{}
+            for ($i = 0; $i -le 50; $i++) { $files[('d{0:D2}\.codex\config.toml' -f $i)] = (Toml ('model = "m{0}"' -f $i)) }
+            $ctx = Get-CdxContext (New-CdxCase -ProjectFiles $files)
+            Assert-Equal 50 @($ctx.Codex).Count
+            Assert-Equal 'm49' $ctx.Codex[49].Data['model']
+            Assert-Equal @('More than 50 nested .codex/config.toml files; only the first 50 were analyzed.') @($ctx.Errors | ForEach-Object { $_.Evidence })
+            Assert-Equal 'codex' $ctx.Errors[0].Harness
+            # Folder budget: the folders already queued are still checked, no further one is queued.
+            $case = New-CdxCase -ProjectFiles @{
+                'a\.codex\config.toml' = (Toml 'model = "a"'); 'b\.codex\config.toml' = (Toml 'model = "b"')
+                'c\.codex\config.toml' = (Toml 'model = "c"'); 'd\.codex\config.toml' = (Toml 'model = "d"')
+                'a\deep\.codex\config.toml' = (Toml 'model = "a-deep"')
+            }
+            $saved = & $aw { $script:AwCodexMaxNestedDirs }
+            try {
+                & $aw { $script:AwCodexMaxNestedDirs = 3 }
+                $ctx = Get-CdxContext $case
+            } finally {
+                & $aw { param($v) $script:AwCodexMaxNestedDirs = $v } $saved
+            }
+            Assert-Equal @('a', 'b', 'c') @($ctx.Codex | ForEach-Object { $_.Data['model'] })
+            Assert-Equal @('Stopped looking for nested .codex/config.toml files after 3 folders.') @($ctx.Errors | ForEach-Object { $_.Evidence })
+        }
+        It 'applies the size limit and the TOML errors to nested files' {
+            $ctx = Get-CdxContext (New-CdxCase -ProjectFiles @{
+                'big\.codex\config.toml' = ('a = "' + ('x' * (2MB)) + '"')
+                'bad\.codex\config.toml' = (Toml 'ok = 1' 'broken = ')
+            })
+            $e = @($ctx.Errors | ForEach-Object { $_.Evidence })
+            Assert-Equal 2 $e.Count
+            Assert-Match $e[0] '^Invalid TOML at line 2'
+            Assert-Match $e[1] 'larger than 2 MB'
+            Assert-Equal @('project') @($ctx.Codex | ForEach-Object { $_.Scope })
+            Assert-Equal $null $ctx.Codex[0].Data
+        }
+        It 'enters no link or junction, and skips a nested .codex link that leaves the root' {
+            $outside = New-CdxTree @{ '.codex\config.toml' = (Toml 'sandbox_mode = "danger-full-access"'); 'inner\.codex\config.toml' = (Toml 'model = "outside"') }
+            $case = New-CdxCase -ProjectFiles @{ 'pkg\README.md' = 'synthetic'; 'inside\.codex\config.toml' = (Toml 'model = "inside"') }
+            $links = @((Join-Path $case.Root 'linked'), (Join-Path $case.Root 'loop'), (Join-Path $case.Root 'pkg\.codex'))
+            $made = (New-CdxJunction $links[0] $outside) -and (New-CdxJunction $links[1] $case.Root) -and (New-CdxJunction $links[2] (Join-Path $outside '.codex'))
+            try {
+                if ($made) {
+                    $ctx = Get-CdxContext $case
+                    Assert-Equal @('inside') @($ctx.Codex | ForEach-Object { $_.Data['model'] })
+                    $e = @($ctx.Errors)
+                    Assert-Equal 1 $e.Count
+                    Assert-Match $e[0].Evidence 'symbolic link or junction leads outside the analyzed root'
+                    Assert-Match $e[0].Location.Path '\\pkg\\\.codex\\config\.toml$'
+                }
+            } finally {
+                foreach ($l in $links) { if ([System.IO.Directory]::Exists($l)) { [System.IO.Directory]::Delete($l) } }
+            }
+        }
+        It 'reads the system config.toml through the test hook only, as the lowest layer' {
+            $case = New-CdxCase -User (Toml 'model = "user"') -Project (Toml 'model = "project"') -System (Toml 'model = "system"' '[mcp_servers.sys]' 'command = "fake-server"')
+            $ctx = Get-CdxContext $case
+            Assert-Equal @('user', 'project', 'system') @($ctx.Codex | ForEach-Object { $_.Scope })
+            Assert-Equal $case.System $ctx.Codex[2].Path
+            Assert-Equal @('system') @($ctx.McpFiles | Where-Object { $_.Harness -eq 'codex' } | ForEach-Object { $_.Scope })
+            Assert-Contains $ctx.TextFiles $case.System
+            # Never without a user profile, and never without the hook in tests.
+            $ctx = Get-CdxContext ([pscustomobject]@{ Root = $case.Root; User = $null; Requirements = $null; System = $case.System })
+            Assert-Equal @('project') @($ctx.Codex | ForEach-Object { $_.Scope })
+            $ctx = Get-CdxContext ([pscustomobject]@{ Root = $case.Root; User = $case.User; Requirements = $null })
+            Assert-Equal @('user', 'project') @($ctx.Codex | ForEach-Object { $_.Scope })
+            # Unix only: no Windows location is documented.
+            $candidates = @(& $aw { Get-AwCodexSystemConfigCandidates })
+            if (& $aw { $script:AwIsWindowsOS }) { Assert-Equal 0 $candidates.Count } else { Assert-Equal @('/etc/codex/config.toml') $candidates }
+        }
+    }
+
+    Describe 'Codex nested project layers and system config: rules' {
+        It 'points to the nested or system file that sets the value' {
+            $f = @(Invoke-CdxRule 'AW-CDX-001' -ProjectFiles @{ 'packages\app\.codex\config.toml' = (Toml '# nested' 'sandbox_mode = "danger-full-access"') } -System (Toml 'default_permissions = ":danger-full-access"'))
+            Assert-Equal @('sandbox_mode = "danger-full-access" (project config in ''packages/app'')', 'default_permissions = ":danger-full-access" (system config)') (Get-Evidence $f)
+            Assert-Match $f[0].Location.Path '\\packages\\app\\\.codex\\config\.toml$'
+            Assert-Equal 2 $f[0].Location.Line
+            Assert-Match $f[1].Location.Path '\\config\.toml$'
+            $f = @(Invoke-CdxRule 'AW-CDX-011' -Project (Toml 'web_search = "live"') -ProjectFiles @{ 'docs\.codex\config.toml' = (Toml 'web_search = "live"') })
+            Assert-Equal @('web_search = "live" (project config)', 'web_search = "live" (project config in ''docs'')') (Get-Evidence $f)
+            Assert-Equal 'critical' @(Invoke-CdxRule 'AW-CDX-009' -ProjectFiles @{ 'svc\.codex\config.toml' = (Toml 'mcp_servers.r.oauth.client_secret = "FAKE-nested-secret-FAKE-0010"') })[0].Severity
+        }
+        It 'AW-CDX-002 stacks each folder: nested > intermediate > root project > user > system' {
+            # The root approval and the nested full access apply together in the nested folder.
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -Project (Toml 'approval_policy = "never"') -ProjectFiles @{ 'packages\app\.codex\config.toml' = (Toml 'sandbox_mode = "danger-full-access"') })
+            Assert-Equal @('approval_policy = "never" (project config); with sandbox_mode = "danger-full-access" (project config in ''packages/app''): no sandbox and no approval') (Get-Evidence $f)
+            Assert-Equal 'critical' $f[0].Severity
+            Assert-Match $f[0].Location.Path '\\[0-9a-f]{12}\\\.codex\\config\.toml$'
+            # An intermediate layer over the root, under the nested one.
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -Project (Toml 'approval_policy = "on-request"') -ProjectFiles @{
+                'packages\.codex\config.toml' = (Toml 'approval_policy = "never"')
+                'packages\app\.codex\config.toml' = (Toml 'sandbox_mode = "danger-full-access"') })
+            Assert-Equal @('approval_policy = "never" (project config in ''packages''); with sandbox_mode = "danger-full-access" (project config in ''packages/app''): no sandbox and no approval') (Get-Evidence $f)
+            Assert-Match $f[0].Location.Path '\\packages\\\.codex\\config\.toml$'
+        }
+        It 'AW-CDX-002 does not combine layers that never apply together' {
+            # The nested folder overrides the root approval; the root folder keeps its sandbox.
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -Project (Toml 'approval_policy = "never"') -ProjectFiles @{ 'app\.codex\config.toml' = (Toml 'approval_policy = "on-request"' 'sandbox_mode = "danger-full-access"') })
+            Assert-Equal @('medium') @($f | ForEach-Object { $_.Severity })
+            # Sibling folders never stack.
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -ProjectFiles @{ 'a\.codex\config.toml' = (Toml 'approval_policy = "never"'); 'b\.codex\config.toml' = (Toml 'sandbox_mode = "danger-full-access"') })
+            Assert-Equal @('medium') @($f | ForEach-Object { $_.Severity })
+            # A trusted project loads all its layers, an untrusted one none: the nested full access
+            # never applies without the root approval above the user one.
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -User (Toml 'approval_policy = "never"') -Project (Toml 'approval_policy = "on-request"') -ProjectFiles @{ 'app\.codex\config.toml' = (Toml 'sandbox_mode = "danger-full-access"') })
+            Assert-Equal @('approval_policy = "never" (user config)') (Get-Evidence $f)
+            Assert-Equal 'medium' $f[0].Severity
+        }
+        It 'AW-CDX-002 puts the system config below the user config' {
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -User (Toml 'approval_policy = "never"') -System (Toml 'sandbox_mode = "danger-full-access"'))
+            Assert-Equal @('approval_policy = "never" (user config); with sandbox_mode = "danger-full-access" (system config): no sandbox and no approval') (Get-Evidence $f)
+            Assert-Equal 'critical' $f[0].Severity
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -User (Toml 'approval_policy = "never"' 'sandbox_mode = "workspace-write"') -System (Toml 'sandbox_mode = "danger-full-access"'))
+            Assert-Equal 'medium' $f[0].Severity
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -User (Toml 'model = "gpt-fake"') -System (Toml 'approval_policy = "never"' 'sandbox_mode = "danger-full-access"'))
+            Assert-Equal @('approval_policy = "never" (system config); with sandbox_mode = "danger-full-access" (system config): no sandbox and no approval') (Get-Evidence $f)
+            # A user approval overrides the system one.
+            $f = @(Invoke-CdxRule 'AW-CDX-002' -User (Toml 'approval_policy = "on-request"') -System (Toml 'approval_policy = "never"' 'sandbox_mode = "danger-full-access"'))
+            Assert-Equal @('approval_policy = "never" (system config)') (Get-Evidence $f)
+            Assert-Equal 'medium' $f[0].Severity
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-002' -User (Toml 'approval_policy = "never"') -System (Toml 'sandbox_mode = "danger-full-access"') -Requirements (Toml 'allowed_approval_policies = ["on-request"]') | Where-Object { $_.Severity -ne 'info' }).Count
+        }
+        It 'AW-CDX-003 follows the sandbox mode of the folder chain and of the system config' {
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-003' -Project (Toml 'sandbox_mode = "read-only"') -ProjectFiles @{ 'pkg\.codex\config.toml' = (Toml '[sandbox_workspace_write]' 'network_access = true') }).Count
+            $f = @(Invoke-CdxRule 'AW-CDX-003' -Project (Toml 'sandbox_mode = "workspace-write"') -ProjectFiles @{ 'pkg\.codex\config.toml' = (Toml '[sandbox_workspace_write]' 'network_access = true') })
+            Assert-Equal @('sandbox_workspace_write.network_access = true (project config in ''pkg'')') (Get-Evidence $f)
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-003' -User (Toml '[sandbox_workspace_write]' 'network_access = true') -System (Toml 'sandbox_mode = "read-only"')).Count
+            Assert-Equal 1 @(Invoke-CdxRule 'AW-CDX-003' -User (Toml '[sandbox_workspace_write]' 'network_access = true') -System (Toml 'sandbox_mode = "workspace-write"')).Count
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-003' -User (Toml '[sandbox_workspace_write]' 'network_access = true') -System (Toml 'default_permissions = ":workspace"')).Count
+        }
+        It 'AW-CDX-004 sees a network proxy turned off in a nested folder, or on in the system config' {
+            $t = Toml '[features]' 'network_proxy = true' '[permissions.dev.network]' 'enabled = true'
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-004' -Project $t).Count
+            $f = @(Invoke-CdxRule 'AW-CDX-004' -Project $t -ProjectFiles @{ 'tools\.codex\config.toml' = (Toml '[features]' 'network_proxy = false') })
+            Assert-Equal 1 $f.Count
+            Assert-Match $f[0].Evidence 'network proxy is off.*\(project config\)$'
+            $perm = Toml '[permissions.dev.network]' 'enabled = true'
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-004' -User $perm -System (Toml '[features]' 'network_proxy = true')).Count
+            Assert-Equal 1 @(Invoke-CdxRule 'AW-CDX-004' -User $perm -System (Toml '[features]' 'network_proxy = false')).Count
+        }
+        It 'AW-CDX-012 lists the hooks of nested config files and follows the hooks flag per folder' {
+            $nested = Toml '[[hooks.Stop]]' '[[hooks.Stop.hooks]]' 'type = "command"' 'command = "./nested-stop.sh"'
+            $f = @(Invoke-CdxRule 'AW-CDX-012' -ProjectFiles @{ 'pkg\.codex\config.toml' = $nested })
+            Assert-Equal @('hook Stop command: ./nested-stop.sh') (Get-Evidence $f)
+            Assert-Match $f[0].Location.Path '\\pkg\\\.codex\\config\.toml$'
+            Assert-Equal 1 $f[0].Location.Line
+            # The root flag applies in the nested folder too.
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-012' -Project (Toml '[features]' 'hooks = false') -ProjectFiles @{ 'pkg\.codex\config.toml' = $nested }).Count
+            $json = '{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "./stop.sh" } ] } ] } }'
+            # A nested flag turns hooks off in its folder only: the root hooks still run at the root.
+            $f = @(Invoke-CdxRule 'AW-CDX-012' -ProjectFiles @{ '.codex\hooks.json' = $json; 'pkg\.codex\config.toml' = (Toml '[features]' 'hooks = false') })
+            Assert-Equal @('hook Stop command: ./stop.sh') (Get-Evidence $f)
+            # Hooks off at the root but turned on below it: the evidence names the nested file.
+            $f = @(Invoke-CdxRule 'AW-CDX-012' -Project (Toml '[features]' 'hooks = false') -ProjectFiles @{ '.codex\hooks.json' = $json; 'pkg\.codex\config.toml' = (Toml '[features]' 'hooks = true') })
+            Assert-Equal @('hook Stop command: ./stop.sh; hooks are off in its folder but on below it (features.hooks = true, project config in ''pkg'')') (Get-Evidence $f)
+            Assert-Match $f[0].Location.Path '\\\.codex\\hooks\.json$'
+        }
+        It 'AW-CDX-012 finds the root config when the analyzed folder is a drive root' {
+            $json = '{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "./stop.sh" } ] } ] } }'
+            # The same files seen from a drive root (Root 'X:\', files under 'X:\.codex\').
+            $atDrive = {
+                param($Ctx)
+                $move = { param($a) $c = $a.PSObject.Copy(); $c.Path = 'X:\.codex\' + (Split-Path -Leaf $a.Path); $c }
+                $copy = $Ctx.PSObject.Copy()
+                $copy.Root = 'X:\'
+                $copy.Codex = @($Ctx.Codex | ForEach-Object { & $move $_ })
+                $copy.Hooks = @($Ctx.Hooks | ForEach-Object { & $move $_ })
+                return $copy
+            }
+            $off = Get-CdxContext (New-CdxCase -Project (Toml '[features]' 'hooks = false') -ProjectFiles @{ '.codex\hooks.json' = $json })
+            Assert-Equal 0 @(Invoke-CdxCheck 'AW-CDX-012' $off).Count
+            Assert-Equal 0 @(Invoke-CdxCheck 'AW-CDX-012' (& $atDrive $off)).Count
+            $on = Get-CdxContext (New-CdxCase -Project (Toml 'model = "gpt-fake"') -ProjectFiles @{ '.codex\hooks.json' = $json })
+            Assert-Equal @('hook Stop command: ./stop.sh') (Get-Evidence @(Invoke-CdxCheck 'AW-CDX-012' (& $atDrive $on)))
+        }
+        It 'AW-CDX-012 puts the system hooks flag below the user one' {
+            $json = '{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "./stop.sh" } ] } ] } }'
+            Assert-Equal 0 @(Invoke-CdxRule 'AW-CDX-012' -ProjectFiles @{ '.codex\hooks.json' = $json } -System (Toml '[features]' 'hooks = false')).Count
+            Assert-Equal 1 @(Invoke-CdxRule 'AW-CDX-012' -ProjectFiles @{ '.codex\hooks.json' = $json } -User (Toml '[features]' 'hooks = true') -System (Toml '[features]' 'hooks = false')).Count
+            Assert-Equal 1 @(Invoke-CdxRule 'AW-CDX-012' -ProjectFiles @{ '.codex\hooks.json' = $json } -System (Toml '[features]' 'codex_hooks = true')).Count
+        }
+        It 'AW-CDX-012 evaluates each Codex home on its own (regression: CODEX_HOME and ~/.codex)' {
+            $json = '{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "./stop.sh" } ] } ] } }'
+            $project = Get-CdxContext (New-CdxCase -User (Toml 'model = "gpt-fake"') -ProjectFiles @{ '.codex\hooks.json' = $json })
+            $silent = Get-CdxContext (New-CdxCase -User (Toml '[features]' 'hooks = false'))
+            $silentToo = Get-CdxContext (New-CdxCase -User (Toml '[features]' 'codex_hooks = false'))
+            # hooks = false in the home that is not active must not silence the active one, in either order.
+            $two = Join-CdxHomes $project @($project, $silent)
+            Assert-Equal 2 @($two.Codex | Where-Object { $_.Scope -eq 'user' }).Count
+            Assert-Equal @('hook Stop command: ./stop.sh') (Get-Evidence @(Invoke-CdxCheck 'AW-CDX-012' $two))
+            Assert-Equal 1 @(Invoke-CdxCheck 'AW-CDX-012' (Join-CdxHomes $project @($silent, $project))).Count
+            # Silent when both homes turn hooks off.
+            Assert-Equal 0 @(Invoke-CdxCheck 'AW-CDX-012' (Join-CdxHomes $project @($silent, $silentToo))).Count
+            # The project config still wins over both homes.
+            $on = Get-CdxContext (New-CdxCase -Project (Toml '[features]' 'hooks = true') -ProjectFiles @{ '.codex\hooks.json' = $json })
+            Assert-Equal 1 @(Invoke-CdxCheck 'AW-CDX-012' (Join-CdxHomes $on @($silent, $silentToo))).Count
+            # The other rules already stack each home on its own.
+            $full = Get-CdxContext (New-CdxCase -User (Toml 'sandbox_mode = "danger-full-access"'))
+            $never = Get-CdxContext (New-CdxCase -User (Toml 'approval_policy = "never"'))
+            Assert-Equal @('medium') @(Invoke-CdxCheck 'AW-CDX-002' (Join-CdxHomes $never @($never, $full)) | ForEach-Object { $_.Severity })
+        }
+        It 'AW-CDX-014 stacks a profile with the nested chain and the system config' {
+            $f = @(Invoke-CdxRule 'AW-CDX-014' -UserFiles @{ '.codex\fast.config.toml' = (Toml 'approval_policy = "never"') } -System (Toml 'sandbox_mode = "danger-full-access"'))
+            Assert-Equal @('profile ''fast'' (--profile fast): approval_policy = "never"; with sandbox_mode = "danger-full-access" (system config): no sandbox and no approval') (Get-Evidence $f)
+            Assert-Equal 'high' $f[0].Severity
+            $f = @(Invoke-CdxRule 'AW-CDX-014' -UserFiles @{ '.codex\fast.config.toml' = (Toml 'approval_policy = "never"') } -ProjectFiles @{ 'pkg\.codex\config.toml' = (Toml 'sandbox_mode = "danger-full-access"') })
+            Assert-Equal @('profile ''fast'' (--profile fast): approval_policy = "never"; with sandbox_mode = "danger-full-access" (project config in ''pkg''): no sandbox and no approval') (Get-Evidence $f)
+            # The profile is above the system config: its sandbox mode wins.
+            $f = @(Invoke-CdxRule 'AW-CDX-014' -UserFiles @{ '.codex\fast.config.toml' = (Toml 'approval_policy = "never"' 'sandbox_mode = "workspace-write"') } -System (Toml 'sandbox_mode = "danger-full-access"'))
+            Assert-Equal 'medium' $f[0].Severity
+        }
+        It 'keeps the layer stacks cheap with 50 nested folders and hostile permission tables' {
+            $sb = New-Object System.Text.StringBuilder
+            [void]$sb.Append("[features]`nnetwork_proxy = true`n")
+            for ($i = 1; $i -le 2000; $i++) { [void]$sb.Append("[permissions.p$i.network]`nenabled = true`n") }
+            $files = @{}
+            for ($i = 0; $i -lt 50; $i++) { $files[('n{0:D2}\.codex\config.toml' -f $i)] = (Toml 'approval_policy = "never"' '[features]' 'network_proxy = false' 'hooks = true') }
+            $files['.codex\hooks.json'] = '{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "./stop.sh" } ] } ] } }'
+            $ctx = Get-CdxContext (New-CdxCase -User (Toml 'sandbox_mode = "danger-full-access"') -Project $sb.ToString() -ProjectFiles $files)
+            Assert-Equal 52 @($ctx.Codex).Count
+            # The layers are computed once per context.
+            $same = & $aw { param($c) [object]::ReferenceEquals((Get-AwCdxLayers $c), (Get-AwCdxLayers $c)) } $ctx
+            Assert-True $same
+            foreach ($id in @('AW-CDX-002', 'AW-CDX-003', 'AW-CDX-004', 'AW-CDX-012', 'AW-CDX-014')) {
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                $f = @(Invoke-CdxCheck $id $ctx)
+                $ms = $sw.ElapsedMilliseconds
+                Assert-True ($ms -lt 3000) "$id took $ms ms"
+                if ($id -eq 'AW-CDX-004') { Assert-Equal 20 $f.Count }
+                if ($id -eq 'AW-CDX-002') { Assert-Equal 50 @($f | Where-Object { $_.Severity -eq 'critical' }).Count }
+            }
         }
     }
 

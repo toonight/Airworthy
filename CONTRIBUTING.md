@@ -217,7 +217,7 @@ Register-AwRule -Id 'AW-CLI-006' -Title 'Short statement of the risky configurat
   `precision` of the rule.
 - **Check** receives the analysis context (see the architecture document) and returns findings
   created with `New-AwFinding`. Use `Get-AwSetting` for effective VS Code values; Codex CLI rules
-  read the parsed TOML files of `$Ctx.Codex` (scopes `user`, `project`, `profile` and `managed`),
+  read the parsed TOML files of `$Ctx.Codex` (scopes `user`, `project`, `profile`, `managed` and `system`),
   whose MCP servers are also in `$Ctx.McpFiles`. The engine fills
   any field you omit from the rule metadata. A finding may override the severity when the context
   makes it worse or milder; say so in the description.

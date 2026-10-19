@@ -1,8 +1,9 @@
 # Codex CLI rules (AW-CDX-0xx), applied to Ctx.Codex: ~/.codex/config.toml (or $CODEX_HOME) [user],
-# .codex/config.toml [project], <codex home>/<name>.config.toml [profile] and the machine-wide
-# requirements.toml [managed]; to the project .codex/hooks.json in Ctx.Hooks, and to the project
-# .codex/rules/*.rules files in Ctx.CodexRules. The MCP servers of Codex files are checked by the
-# AW-MCP rules: discovery maps them into Ctx.McpFiles.
+# the .codex/config.toml of the root and of the folders below it [project], <codex home>/<name>.config.toml
+# [profile], the machine-wide requirements.toml [managed] and the Unix /etc/codex/config.toml [system];
+# to the project .codex/hooks.json in Ctx.Hooks, and to the project .codex/rules/*.rules files in
+# Ctx.CodexRules. The MCP servers of Codex files are checked by the AW-MCP rules: discovery maps them
+# into Ctx.McpFiles.
 # Sources (read 2026-10-19): learn.chatgpt.com/docs/config-file/config-reference, /config-basic and
 # /config-advanced, /agent-approvals-security, /permissions, /extend/mcp, /hooks,
 # /agent-configuration/rules and /enterprise/managed-configuration. Only documented keys are checked.
@@ -105,13 +106,32 @@ function Get-AwCdxProfileName {
     return $leaf
 }
 
-function Get-AwCdxScopeLabel {
+function Get-AwCdxProjectFolder {
+    # The folder whose .codex folder holds a project config file ('<folder>' for <folder>/.codex/config.toml).
     param($Artifact)
+    return (Get-AwCdxDirectory (Get-AwCdxDirectory ([string]$Artifact.Path)))
+}
+
+function Get-AwCdxScopeLabel {
+    # Who set a value, for evidence: 'user config', 'project config' (the root one), "project
+    # config in 'packages/app'" (a nested one, relative to the root), 'system config'...
+    param($Artifact, $Ctx)
     switch ([string]$Artifact.Scope) {
         'user'    { return 'user config' }
-        'project' { return 'project config' }
+        'project' {
+            $root = [string](Get-AwMemberValue $Ctx 'Root')
+            if ($root) {
+                $rel = Get-AwRelativePath -Path (Get-AwCdxProjectFolder $Artifact) -Base $root
+                if ($null -ne $rel -and $rel -ne '.') {
+                    if ($script:AwIsWindowsOS) { $rel = $rel.Replace('\', '/') }
+                    return ("project config in '{0}'" -f (Format-AwCommandSnippet $rel 120))
+                }
+            }
+            return 'project config'
+        }
         'profile' { return ("profile '{0}'" -f (Get-AwCdxProfileName $Artifact)) }
         'managed' { return 'requirements.toml' }
+        'system'  { return 'system config' }
     }
     return [string]$Artifact.Scope
 }
@@ -195,25 +215,6 @@ function New-AwCdxFinding {
     New-AwFinding -RuleId $RuleId -Evidence $Evidence -Location $location
 }
 
-function Get-AwCdxStacks {
-    <#
-    Layer stacks, highest precedence first, in which a user or project file applies: a project file
-    over each user file; a user file alone (in the other folders) and under each project file.
-    Profiles apply only with --profile and are checked by AW-CDX-014.
-    #>
-    param($Ctx, $Artifact)
-    $stacks = New-Object System.Collections.ArrayList
-    $users = @(Get-AwCdxArtifacts $Ctx @('user'))
-    if ($Artifact.Scope -eq 'project') {
-        if ($users.Count -eq 0) { [void]$stacks.Add(@($Artifact)) }
-        foreach ($u in $users) { [void]$stacks.Add(@($Artifact, $u)) }
-    } else {
-        [void]$stacks.Add(@($Artifact))
-        foreach ($p in @(Get-AwCdxArtifacts $Ctx @('project'))) { [void]$stacks.Add(@($p, $Artifact)) }
-    }
-    return ,$stacks.ToArray()
-}
-
 function Get-AwCdxDirectory {
     # Folder part of a discovered file path ('' when there is none).
     param([string]$Path)
@@ -222,23 +223,104 @@ function Get-AwCdxDirectory {
     return $Path.Substring(0, $i)
 }
 
+# The layers of the last analyzed context (Get-AwCdxLayers), computed once per context.
+$script:AwCdxLayerCache = $null
+
+function Get-AwCdxLayers {
+    <#
+    The Codex config layers of a context, highest precedence first (config-basic): project config
+    files > profile > user config > system config. Computed once per context:
+    - Chains: for each project config file, the project files that apply in its folder, closest
+      first. Codex loads every .codex/config.toml from the project root down to the working
+      folder, and the closest wins (config-advanced). A project is trusted or not as a whole, and
+      an untrusted project skips all its .codex layers, so a nested file never applies without
+      the files above it.
+    - Stacks: every combination of one project chain (or none: folders outside the project, or
+      an untrusted project) over one user config file (one per Codex home, or none) and the system
+      config. Each Codex home gives its own stacks: only one of them is active in a session.
+    - ByPath: path -> indexes of the stacks that contain the file.
+    Profiles apply only with --profile: Get-AwCdxProfileStacks builds their stacks.
+    #>
+    param($Ctx)
+    # Assigned directly: an if expression would copy the array, and the cache would never match.
+    $codexProp = $Ctx.PSObject.Properties['Codex']
+    $codexValue = $null
+    if ($codexProp) { $codexValue = $codexProp.Value }
+    $cache = $script:AwCdxLayerCache
+    if ($null -ne $cache -and [object]::ReferenceEquals($cache.Ctx, $Ctx) -and [object]::ReferenceEquals($cache.Codex, $codexValue)) { return $cache }
+    $users = @(Get-AwCdxArtifacts $Ctx @('user'))
+    $system = @(Get-AwCdxArtifacts $Ctx @('system')) | Select-Object -First 1
+    $projects = @(Get-AwCdxArtifacts $Ctx @('project'))
+    $folders = @($projects | ForEach-Object { Get-AwCdxProjectFolder $_ })
+    $chains = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $projects.Count; $i++) {
+        $members = New-Object System.Collections.ArrayList
+        for ($j = 0; $j -lt $projects.Count; $j++) {
+            if (Test-AwPathInside -Path $folders[$i] -Dir $folders[$j]) { [void]$members.Add([pscustomobject]@{ Length = $folders[$j].Length; Artifact = $projects[$j] }) }
+        }
+        # An ancestor folder is a prefix of its descendants: the longest folder is the closest.
+        $sorted = @($members | Sort-Object -Property Length -Descending | ForEach-Object { $_.Artifact })
+        [void]$chains.Add($sorted)
+    }
+    $lowers = New-Object System.Collections.ArrayList
+    if ($users.Count -eq 0) { [void]$lowers.Add(@()) } else { foreach ($u in $users) { [void]$lowers.Add(@($u)) } }
+    $stacks = New-Object System.Collections.ArrayList
+    foreach ($low in $lowers) {
+        $lower = @(@($low) + @($system | Where-Object { $null -ne $_ }))
+        [void]$stacks.Add([pscustomobject]@{ Layers = $lower; Project = @() })
+        foreach ($chain in $chains) { [void]$stacks.Add([pscustomobject]@{ Layers = @(@($chain) + $lower); Project = $chain }) }
+    }
+    $byPath = New-AwOrdinalHashtable
+    for ($i = 0; $i -lt $stacks.Count; $i++) {
+        foreach ($a in @($stacks[$i].Layers)) {
+            $p = [string]$a.Path
+            if (-not $byPath.ContainsKey($p)) { $byPath[$p] = New-Object System.Collections.Generic.List[int] }
+            if (-not $byPath[$p].Contains($i)) { $byPath[$p].Add($i) }
+        }
+    }
+    $script:AwCdxLayerCache = [pscustomobject]@{
+        Ctx = $Ctx; Codex = $codexValue; Users = $users; System = $system; Projects = $projects
+        Chains = $chains.ToArray(); Stacks = $stacks.ToArray(); ByPath = $byPath
+    }
+    return $script:AwCdxLayerCache
+}
+
+function Get-AwCdxStacks {
+    <#
+    Layer stacks (arrays, highest precedence first) in which a user, project or system file
+    applies (Get-AwCdxLayers): a project file under the nested project files of the folders below
+    it and over each user config file and the system config; a user file alone and under each
+    project chain; the system config under all of them.
+    #>
+    param($Ctx, $Artifact)
+    $layers = Get-AwCdxLayers $Ctx
+    $out = New-Object System.Collections.ArrayList
+    $p = [string]$Artifact.Path
+    if ($layers.ByPath.ContainsKey($p)) {
+        foreach ($i in $layers.ByPath[$p]) { [void]$out.Add($layers.Stacks[$i].Layers) }
+    }
+    return ,$out.ToArray()
+}
+
 function Get-AwCdxProfileStacks {
     <#
     Layer stacks, highest precedence first, in which a profile file applies (codex --profile <name>).
-    Precedence (config-basic): project config > profile > user config. The profile overlays the
-    config.toml of its own Codex home: alone in the folders without project config, and under each
-    project file.
+    Precedence (config-basic): project config > profile > user config > system config. The profile
+    overlays the config.toml of its own Codex home and the system config: alone in the folders
+    without project config, and under each project chain.
     #>
     param($Ctx, $Artifact)
+    $layers = Get-AwCdxLayers $Ctx
     $dir = Get-AwCdxDirectory ([string]$Artifact.Path)
     $lower = New-Object System.Collections.ArrayList
     [void]$lower.Add($Artifact)
-    foreach ($u in @(Get-AwCdxArtifacts $Ctx @('user'))) {
+    foreach ($u in $layers.Users) {
         if ([string]::Equals((Get-AwCdxDirectory ([string]$u.Path)), $dir, [StringComparison]::OrdinalIgnoreCase)) { [void]$lower.Add($u); break }
     }
+    if ($null -ne $layers.System) { [void]$lower.Add($layers.System) }
     $stacks = New-Object System.Collections.ArrayList
     [void]$stacks.Add($lower.ToArray())
-    foreach ($p in @(Get-AwCdxArtifacts $Ctx @('project'))) { [void]$stacks.Add(@(@($p) + $lower.ToArray())) }
+    foreach ($chain in $layers.Chains) { [void]$stacks.Add(@(@($chain) + $lower.ToArray())) }
     return ,$stacks.ToArray()
 }
 
@@ -313,6 +395,20 @@ function Test-AwCdxProxyOn {
         if ($p -is [System.Collections.IDictionary] -and $p['enabled'] -is [bool]) { return [bool]$p['enabled'] }
     }
     return $false
+}
+
+function Get-AwCdxHooksFlag {
+    # The hooks feature flag that applies in a stack: { Value; Key; Artifact } of the highest file
+    # that sets features.hooks (or its deprecated alias features.codex_hooks), or $null. Hooks are
+    # on when no file sets it (hooks, learn.chatgpt.com).
+    param($Stack)
+    foreach ($l in @($Stack)) {
+        foreach ($k in @('hooks', 'codex_hooks')) {
+            $flag = Get-AwCdxValue $l.Data @('features', $k)
+            if ($flag -is [bool]) { return [pscustomobject]@{ Value = [bool]$flag; Key = ('features.' + $k); Artifact = $l } }
+        }
+    }
+    return $null
 }
 
 function Test-AwCdxForbidden {
@@ -471,7 +567,7 @@ function Get-AwCdxAllowRules {
 
 Register-AwRule -Id 'AW-CDX-001' -Title 'Codex runs commands without a sandbox' `
     -Severity 'high' -Category 'sandbox-network' -Harness 'codex' `
-    -Description 'sandbox_mode = "danger-full-access", or default_permissions = ":danger-full-access", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).' `
+    -Description 'sandbox_mode = "danger-full-access", or default_permissions = ":danger-full-access", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User, project (the .codex/config.toml of the root and of the folders below it) and system config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).' `
     -Fix 'Use sandbox_mode = "workspace-write" (or default_permissions = ":workspace") and grant extra folders or network access explicitly. Keep danger-full-access for a container or VM that is already isolated, and enforce the limit with allowed_sandbox_modes or allowed_permission_profiles in requirements.toml.' `
     -References @('OWASP-ASI05', 'OWASP-ASI02', $script:AwCdxDocs.Security, $script:AwCdxDocs.Permissions, $script:AwCdxDocs.Reference) `
     -Confidence 'high' -Check {
@@ -479,8 +575,8 @@ Register-AwRule -Id 'AW-CDX-001' -Title 'Codex runs commands without a sandbox' 
         $req = Get-AwCdxRequirements $Ctx
         $fullMode = Get-AwCdxDataText 'fullAccessSandboxMode'
         $fullPerm = Get-AwCdxDataText 'fullAccessPermissions'
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'managed'))) {
-            $label = Get-AwCdxScopeLabel $a
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'system', 'managed'))) {
+            $label = Get-AwCdxScopeLabel $a $Ctx
             $mode = Get-AwCdxValue $a.Data @('sandbox_mode')
             if ($a.Scope -ne 'managed' -and (Test-AwCdxString $mode $fullMode)) {
                 $ev = 'sandbox_mode = "{0}" ({1})' -f $mode, $label
@@ -500,16 +596,16 @@ Register-AwRule -Id 'AW-CDX-001' -Title 'Codex runs commands without a sandbox' 
 
 Register-AwRule -Id 'AW-CDX-002' -Title 'Codex never asks for approval' `
     -Severity 'medium' -Category 'approvals' -Harness 'codex' `
-    -Description 'approval_policy = "never" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = "danger-full-access", or default_permissions = ":danger-full-access" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow "never" (allowed_approval_policies).' `
+    -Description 'approval_policy = "never" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = "danger-full-access", or default_permissions = ":danger-full-access" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User, project and system config files are checked in the documented precedence: the project .codex/config.toml files from the project root down to the working folder (the closest wins) > user config > system config, each Codex home on its own; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow "never" (allowed_approval_policies).' `
     -Fix 'Use approval_policy = "on-request" (or a granular table that keeps the prompts you need), and never combine "never" with danger-full-access outside an isolated container or VM. Restrict the allowed values with allowed_approval_policies in requirements.toml.' `
     -References @('OWASP-ASI02', $script:AwCdxDocs.Security, $script:AwCdxDocs.Reference) `
     -Confidence 'high' -Check {
         param($Ctx)
         $req = Get-AwCdxRequirements $Ctx
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project'))) {
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'system'))) {
             $v = Get-AwCdxValue $a.Data @('approval_policy')
             if (-not (Test-AwCdxString $v 'never')) { continue }
-            $ev = 'approval_policy = "never" ({0})' -f (Get-AwCdxScopeLabel $a)
+            $ev = 'approval_policy = "never" ({0})' -f (Get-AwCdxScopeLabel $a $Ctx)
             $sev = $null
             $combo = $null
             foreach ($stack in (Get-AwCdxStacks $Ctx $a)) {
@@ -523,7 +619,7 @@ Register-AwRule -Id 'AW-CDX-002' -Title 'Codex never asks for approval' `
             }
             if ($combo) {
                 $sev = 'critical'
-                $ev += '; with {0} = "{1}" ({2}): no sandbox and no approval' -f $combo.Key, $combo.Value, (Get-AwCdxScopeLabel $combo.Artifact)
+                $ev += '; with {0} = "{1}" ({2}): no sandbox and no approval' -f $combo.Key, $combo.Value, (Get-AwCdxScopeLabel $combo.Artifact $Ctx)
             }
             if (Test-AwCdxForbidden $req 'allowed_approval_policies' 'never') { $sev = 'info'; $ev += '; requirements.toml does not allow it (allowed_approval_policies)' }
             New-AwCdxFinding 'AW-CDX-002' $a 'approval_policy' $ev $sev $null 'approval_policy'
@@ -532,14 +628,14 @@ Register-AwRule -Id 'AW-CDX-002' -Title 'Codex never asks for approval' `
 
 Register-AwRule -Id 'AW-CDX-003' -Title 'Codex workspace-write sandbox has network access' `
     -Severity 'medium' -Category 'sandbox-network' -Harness 'codex' `
-    -Description 'sandbox_workspace_write.network_access = true allows outbound network access inside the workspace-write sandbox, which keeps it off by default. Every command the agent runs without a prompt can then download code or send workspace content, credentials included, to any host. The rule checks user and project config files, with project config over user config, and is silent when the sandbox mode that applies is read-only or danger-full-access (AW-CDX-001), and when the layers use permission profiles instead: default_permissions is set and no loaded config file sets sandbox_mode, or requirements.toml has allowed_permission_profiles. The two systems do not compose, so Codex then ignores [sandbox_workspace_write]; the network of a permission profile is checked by AW-CDX-004.' `
+    -Description 'sandbox_workspace_write.network_access = true allows outbound network access inside the workspace-write sandbox, which keeps it off by default. Every command the agent runs without a prompt can then download code or send workspace content, credentials included, to any host. The rule checks user, project and system config files, in the precedence of AW-CDX-002 (nested project config > project config > user config > system config), and is silent when the sandbox mode that applies is read-only or danger-full-access (AW-CDX-001), and when the layers use permission profiles instead: default_permissions is set and no loaded config file sets sandbox_mode, or requirements.toml has allowed_permission_profiles. The two systems do not compose, so Codex then ignores [sandbox_workspace_write]; the network of a permission profile is checked by AW-CDX-004.' `
     -Fix 'Remove network_access (default false) and approve network access per command, or use a permission profile with the network proxy and an allowlist of domains (permissions.<name>.network.domains).' `
     -References @('OWASP-ASI02', 'OWASP-ASI05', $script:AwCdxDocs.Security, $script:AwCdxDocs.Permissions, $script:AwCdxDocs.Reference) `
     -Confidence 'high' -Check {
         param($Ctx)
         $req = Get-AwCdxRequirements $Ctx
         $path = @('sandbox_workspace_write', 'network_access')
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project'))) {
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'system'))) {
             if (-not (Test-AwCdxTrue (Get-AwCdxValue $a.Data $path))) { continue }
             $applies = $false
             foreach ($stack in (Get-AwCdxStacks $Ctx $a)) {
@@ -549,7 +645,7 @@ Register-AwRule -Id 'AW-CDX-003' -Title 'Codex workspace-write sandbox has netwo
                 if ($null -eq $mode -or (Test-AwCdxString $mode.Value 'workspace-write')) { $applies = $true; break }
             }
             if (-not $applies) { continue }
-            New-AwCdxFinding 'AW-CDX-003' $a 'sandbox_workspace_write.network_access' ('sandbox_workspace_write.network_access = true ({0})' -f (Get-AwCdxScopeLabel $a)) `
+            New-AwCdxFinding 'AW-CDX-003' $a 'sandbox_workspace_write.network_access' ('sandbox_workspace_write.network_access = true ({0})' -f (Get-AwCdxScopeLabel $a $Ctx)) `
                 $null @('[sandbox_workspace_write]', 'sandbox_workspace_write') 'network_access'
         }
     }
@@ -563,19 +659,25 @@ Register-AwRule -Id 'AW-CDX-004' -Title 'Codex permission profile allows unrestr
         param($Ctx)
         $req = Get-AwCdxRequirements $Ctx
         $shown = @{}
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile'))) {
-            $label = Get-AwCdxScopeLabel $a
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'system'))) {
+            $label = Get-AwCdxScopeLabel $a $Ctx
             $perms = Get-AwCdxValue $a.Data @('permissions')
+            if ($perms -isnot [System.Collections.IDictionary]) { continue }
+            # The layers where this file applies with the network proxy off: they do not depend on
+            # the permission profile, so they are found once per file.
+            $proxyOff = @(foreach ($stack in (Get-AwCdxLayerStacks $Ctx $a)) { if (-not (Test-AwCdxProxyOn $stack $req)) { ,$stack } })
             foreach ($name in (Get-AwCdxSortedKeys $perms)) {
                 $net = Get-AwCdxValue $perms @($name, 'network')
                 if ($net -isnot [System.Collections.IDictionary] -or -not (Test-AwCdxTrue $net['enabled'])) { continue }
                 $prefix = 'permissions.' + (Format-AwCdxKey $name) + '.network'
                 $headers = @("[permissions.$name.network]", "permissions.$name.network", "permissions.$name")
                 # Network on, proxy off: direct access without domain rules, in some layers where the profile applies.
+                # Once the file has its 20 findings of this kind, the layers are not searched again.
                 $direct = $false
-                foreach ($stack in (Get-AwCdxLayerStacks $Ctx $a)) {
-                    if (-not (Test-AwCdxEffective $stack $a @('permissions', $name, 'network', 'enabled'))) { continue }
-                    if (-not (Test-AwCdxProxyOn $stack $req)) { $direct = $true; break }
+                if ([int]$shown['proxy|' + [string]$a.Path] -lt $script:AwCdxMaxPerFile) {
+                    foreach ($stack in $proxyOff) {
+                        if (Test-AwCdxEffective $stack $a @('permissions', $name, 'network', 'enabled')) { $direct = $true; break }
+                    }
                 }
                 if ($direct -and (Test-AwCdxRoom $shown $a 'proxy')) {
                     New-AwCdxFinding 'AW-CDX-004' $a ($prefix + '.enabled') ('{0}.enabled = true and the network proxy is off: commands have direct, unrestricted network access, and the domain rules are not enforced ({1})' -f $prefix, $label) $null $headers 'enabled'
@@ -609,8 +711,8 @@ Register-AwRule -Id 'AW-CDX-005' -Title 'Codex can write to a very broad folder'
         $workspaceProfile = Get-AwCdxDataText 'workspaceProfile'
         $rootsToken = Get-AwCdxDataText 'workspaceRootsToken'
         $shown = @{}
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile'))) {
-            $label = Get-AwCdxScopeLabel $a
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'system'))) {
+            $label = Get-AwCdxScopeLabel $a $Ctx
             $roots = Get-AwCdxValue $a.Data @('sandbox_workspace_write', 'writable_roots')
             if ($roots -is [System.Array]) {
                 foreach ($r in $roots) {
@@ -663,8 +765,8 @@ Register-AwRule -Id 'AW-CDX-006' -Title 'Codex network proxy safety check turned
         param($Ctx)
         $options = @(Get-AwCdxDataList 'dangerousNetworkOptions')
         $shown = @{}
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile'))) {
-            $label = Get-AwCdxScopeLabel $a
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'system'))) {
+            $label = Get-AwCdxScopeLabel $a $Ctx
             $proxy = Get-AwCdxValue $a.Data @('features', 'network_proxy')
             if ($proxy -is [System.Collections.IDictionary]) {
                 foreach ($o in $options) {
@@ -691,12 +793,12 @@ Register-AwRule -Id 'AW-CDX-006' -Title 'Codex network proxy safety check turned
 
 Register-AwRule -Id 'AW-CDX-007' -Title 'Codex passes every environment variable, secrets included, to commands' `
     -Severity 'low' -Category 'secrets' -Harness 'codex' `
-    -Description 'shell_environment_policy.inherit = "all" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to "exclude", or the legacy exclude list) or an include allowlist (filters entries set to "include", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore_default_excludes = false or a filter restricts the variables.' `
+    -Description 'shell_environment_policy.inherit = "all" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to "exclude", or the legacy exclude list) or an include allowlist (filters entries set to "include", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project, profile and system config files and is silent when ignore_default_excludes = false or a filter restricts the variables.' `
     -Fix 'Use inherit = "core" (or "none"), set ignore_default_excludes = false, and add [shell_environment_policy.filters] entries that exclude the secrets the commands do not need.' `
     -References @('OWASP-ASI03', $script:AwCdxDocs.Advanced, $script:AwCdxDocs.Reference) `
     -Confidence 'high' -Check {
         param($Ctx)
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile'))) {
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'system'))) {
             $policy = Get-AwCdxValue $a.Data @('shell_environment_policy')
             if ($policy -isnot [System.Collections.IDictionary] -or -not (Test-AwCdxString $policy['inherit'] 'all')) { continue }
             $ignore = $policy['ignore_default_excludes']
@@ -712,7 +814,7 @@ Register-AwRule -Id 'AW-CDX-007' -Title 'Codex passes every environment variable
             }
             if ($restricted) { continue }
             $defaults = if ($ignore -is [bool]) { 'ignore_default_excludes = true' } else { 'ignore_default_excludes not set (default true)' }
-            New-AwCdxFinding 'AW-CDX-007' $a 'shell_environment_policy.inherit' ('shell_environment_policy.inherit = "all", no exclude or include filter, {0} ({1})' -f $defaults, (Get-AwCdxScopeLabel $a)) `
+            New-AwCdxFinding 'AW-CDX-007' $a 'shell_environment_policy.inherit' ('shell_environment_policy.inherit = "all", no exclude or include filter, {0} ({1})' -f $defaults, (Get-AwCdxScopeLabel $a $Ctx)) `
                 $null @('[shell_environment_policy]', 'shell_environment_policy') 'inherit'
         }
     }
@@ -726,8 +828,8 @@ Register-AwRule -Id 'AW-CDX-008' -Title 'Codex MCP tools run without approval' `
         param($Ctx)
         $approve = Get-AwCdxDataText 'autoApproveMode'
         $room = @{}
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile'))) {
-            $label = Get-AwCdxScopeLabel $a
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'system'))) {
+            $label = Get-AwCdxScopeLabel $a $Ctx
             $shown = 0
             foreach ($c in @(Get-AwCdxMcpContainers $a.Data)) {
                 if ((Test-AwCdxString $c.Server['default_tools_approval_mode'] $approve) -and (Test-AwCdxRoom $room $a 'server')) {
@@ -755,8 +857,8 @@ Register-AwRule -Id 'AW-CDX-009' -Title 'Secret stored in a Codex config file' `
     -Confidence 'high' -Check {
         param($Ctx)
         $shown = @{}
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'managed'))) {
-            $label = Get-AwCdxScopeLabel $a
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'profile', 'system', 'managed'))) {
+            $label = Get-AwCdxScopeLabel $a $Ctx
             $sev = if ($a.Scope -eq 'project') { 'critical' } else { $null }
             $servers = Get-AwCdxValue $a.Data @('mcp_servers')
             foreach ($id in (Get-AwCdxSortedKeys $servers)) {
@@ -791,7 +893,7 @@ Register-AwRule -Id 'AW-CDX-010' -Title 'Codex trusts a folder that is too broad
                 $why = Get-AwCdxBroadPath -Path $p -Ctx $Ctx
                 if (-not $why -or -not (Test-AwCdxRoom $shown $a 'project')) { continue }
                 $shownPath = Format-AwCommandSnippet $p 120
-                New-AwCdxFinding 'AW-CDX-010' $a 'projects.trust_level' ('projects ''{0}'' trust_level = "trusted" ({1}, {2})' -f $shownPath, $why, (Get-AwCdxScopeLabel $a)) `
+                New-AwCdxFinding 'AW-CDX-010' $a 'projects.trust_level' ('projects ''{0}'' trust_level = "trusted" ({1}, {2})' -f $shownPath, $why, (Get-AwCdxScopeLabel $a $Ctx)) `
                     $null @(("projects.'" + $p + "'"), ('projects."' + $p + '"'), ('projects.' + $p)) 'trust_level'
             }
         }
@@ -799,15 +901,15 @@ Register-AwRule -Id 'AW-CDX-010' -Title 'Codex trusts a folder that is too broad
 
 Register-AwRule -Id 'AW-CDX-011' -Title 'Codex live web search is enabled' `
     -Severity 'medium' -Category 'sandbox-network' -Harness 'codex' `
-    -Description 'web_search = "live" gives the agent unrestricted live retrieval of web pages, instead of the default "cached" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow "live" (allowed_web_search_modes).' `
+    -Description 'web_search = "live" gives the agent unrestricted live retrieval of web pages, instead of the default "cached" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User, project and system config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow "live" (allowed_web_search_modes).' `
     -Fix 'Keep web_search = "cached" (the default), or "indexed", and use live search only in sessions that need it (--search). Restrict it with allowed_web_search_modes in requirements.toml.' `
     -References @('OWASP-ASI01', $script:AwCdxDocs.Basics, $script:AwCdxDocs.Security, $script:AwCdxDocs.Reference) `
     -Confidence 'high' -Check {
         param($Ctx)
         $req = Get-AwCdxRequirements $Ctx
-        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project'))) {
+        foreach ($a in @(Get-AwCdxArtifacts $Ctx @('user', 'project', 'system'))) {
             if (-not (Test-AwCdxString (Get-AwCdxValue $a.Data @('web_search')) 'live')) { continue }
-            $ev = 'web_search = "live" ({0})' -f (Get-AwCdxScopeLabel $a)
+            $ev = 'web_search = "live" ({0})' -f (Get-AwCdxScopeLabel $a $Ctx)
             $sev = $null
             if (Test-AwCdxForbidden $req 'allowed_web_search_modes' 'live') { $sev = 'info'; $ev += '; requirements.toml does not allow it (allowed_web_search_modes)' }
             New-AwCdxFinding 'AW-CDX-011' $a 'web_search' $ev $sev $null 'web_search'
@@ -816,7 +918,7 @@ Register-AwRule -Id 'AW-CDX-011' -Title 'Codex live web search is enabled' `
 
 Register-AwRule -Id 'AW-CDX-012' -Title 'Project Codex hooks run commands' `
     -Severity 'medium' -Category 'mcp-supply-chain' -Harness 'codex' `
-    -Description 'Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks, project config over user config) or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.' `
+    -Description 'Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml files (the root one and those of the folders below it, which load in their folder). They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks) in every folder and Codex home where the hooks load, in the precedence of AW-CDX-002 (nested project config > project config > user config > system config), or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.' `
     -Fix 'Review every hook command and the scripts it calls before you trust it, protect .codex/ with CODEOWNERS and required reviews, and keep personal hooks in ~/.codex/hooks.json. Set allow_managed_hooks_only = true in requirements.toml where repository hooks are not needed.' `
     -References @('OWASP-ASI04', 'OWASP-ASI05', $script:AwCdxDocs.Hooks, $script:AwCdxDocs.Advanced) `
     -Confidence 'high' -Check {
@@ -827,28 +929,56 @@ Register-AwRule -Id 'AW-CDX-012' -Title 'Project Codex hooks run commands' `
             $managed = Get-AwCdxValue $req.Data @('features', 'hooks')
             if ($managed -is [bool] -and -not $managed) { return }
         }
-        $project = @(Get-AwCdxArtifacts $Ctx @('project')) | Select-Object -First 1
-        $layers = @(@($project) + @(Get-AwCdxArtifacts $Ctx @('user')) | Where-Object { $null -ne $_ })
-        foreach ($l in $layers) {
-            $flag = Get-AwCdxValue $l.Data @('features', 'hooks')
-            if ($flag -isnot [bool]) { $flag = Get-AwCdxValue $l.Data @('features', 'codex_hooks') }
-            if ($flag -is [bool]) {
-                if (-not $flag) { return }
-                break
-            }
+        # Every layer stack (Get-AwCdxLayers) is evaluated on its own: one per Codex home, so a flag in a
+        # home that is not active never silences the others, and one per project folder, since a
+        # nested .codex/config.toml can turn hooks on or off in its folder.
+        $layers = Get-AwCdxLayers $Ctx
+        $flags = New-Object object[] $layers.Stacks.Count
+        for ($i = 0; $i -lt $layers.Stacks.Count; $i++) { $flags[$i] = Get-AwCdxHooksFlag $layers.Stacks[$i].Layers }
+        $root = [string](Get-AwMemberValue $Ctx 'Root')
+        $rootConfig = $null
+        # Compared as relative paths, so a drive root ('X:\', whose config folder is 'X:') still matches.
+        foreach ($p in $layers.Projects) {
+            if ((Get-AwRelativePath -Path (Get-AwCdxProjectFolder $p) -Base $root) -eq '.') { $rootConfig = $p; break }
         }
+        $all = @(0..($layers.Stacks.Count - 1))
+        if ($layers.Stacks.Count -eq 0) { $all = @() }
         $sources = New-Object System.Collections.ArrayList
+        # The root .codex/hooks.json loads in every folder of the trusted project: in the stacks of
+        # every project chain, and in the stacks without project config file when the root has none.
+        # Its own folder is the root: the chain of the root config, or no project config file.
         foreach ($h in @(Get-AwMemberValue $Ctx 'Hooks')) {
             if ($null -eq $h -or $h.Harness -ne 'codex' -or $h.Scope -ne 'project' -or $h.Data -isnot [System.Collections.IDictionary]) { continue }
-            [void]$sources.Add([pscustomobject]@{ Artifact = $h; Hooks = $h.Data['hooks']; Json = $true })
+            $in = @($all | Where-Object { $null -eq $rootConfig -or @($layers.Stacks[$_].Project).Count -gt 0 })
+            $own = @($in | Where-Object {
+                $chain = @($layers.Stacks[$_].Project)
+                if ($null -eq $rootConfig) { $chain.Count -eq 0 } else { $chain.Count -gt 0 -and [object]::ReferenceEquals($chain[0], $rootConfig) }
+            })
+            [void]$sources.Add([pscustomobject]@{ Artifact = $h; Hooks = $h.Data['hooks']; Json = $true; In = $in; Own = $own })
         }
-        if ($project) { [void]$sources.Add([pscustomobject]@{ Artifact = $project; Hooks = (Get-AwCdxValue $project.Data @('hooks')); Json = $false }) }
+        # The [hooks] tables of a project config file load in its folder and the folders below it.
+        foreach ($p in $layers.Projects) {
+            $in = @()
+            if ($layers.ByPath.ContainsKey([string]$p.Path)) { $in = @($layers.ByPath[[string]$p.Path]) }
+            $own = @($in | Where-Object { [object]::ReferenceEquals(@($layers.Stacks[$_].Project)[0], $p) })
+            [void]$sources.Add([pscustomobject]@{ Artifact = $p; Hooks = (Get-AwCdxValue $p.Data @('hooks')); Json = $false; In = $in; Own = $own })
+        }
         foreach ($s in $sources) {
+            $enabled = @($s.In | Where-Object { $null -eq $flags[$_] -or $flags[$_].Value })
+            if ($enabled.Count -eq 0) { continue }
             $handlers = @(Get-AwCdxHookHandlers $s.Hooks)
+            if ($handlers.Count -eq 0) { continue }
+            # Hooks off in the folder of the file but turned back on below it: name the file that does it.
+            $note = ''
+            if (@($s.Own | Where-Object { $enabled -contains $_ }).Count -eq 0) {
+                $by = $flags[$enabled[0]]
+                if ($null -ne $by) { $note = '; hooks are off in its folder but on below it ({0} = true, {1})' -f $by.Key, (Get-AwCdxScopeLabel $by.Artifact $Ctx) }
+            }
             $limit = $script:AwCdxMaxPerFile
             for ($i = 0; $i -lt [Math]::Min($handlers.Count, $limit); $i++) {
                 $h = $handlers[$i]
                 $text = 'hook {0} {1}: {2}' -f (Format-AwCdxKey $h.Event), $h.Type, (Format-AwCommandSnippet $h.Text)
+                $text += $note
                 if ($i -eq $limit - 1 -and $handlers.Count -gt $limit) { $text += (' (and {0} more)' -f ($handlers.Count - $limit)) }
                 $key = 'hooks.' + (Format-AwCdxKey $h.Event)
                 if ($s.Json) {
@@ -883,7 +1013,7 @@ Register-AwRule -Id 'AW-CDX-013' -Title 'Project Codex rules allow commands outs
 
 Register-AwRule -Id 'AW-CDX-014' -Title 'Codex profile weakens the sandbox or the approvals' `
     -Severity 'medium' -Category 'sandbox-network' -Harness 'codex' `
-    -Description 'Checks the profile files (<codex home>/<name>.config.toml, selected with --profile <name>) for settings that weaken the defaults: sandbox_mode = "danger-full-access", default_permissions = ":danger-full-access", approval_policy = "never", sandbox_workspace_write.network_access = true and web_search = "live". One --profile flag then switches a session to that configuration. A profile is evaluated with the layers it applies with, in the documented precedence project config > profile > user config: the config.toml of its Codex home below it, alone and under each project .codex/config.toml. A profile setting counts only where it applies (sandbox_mode in any of these files takes precedence over default_permissions, and [sandbox_workspace_write] is ignored with permission profiles). The finding is high when, with the profile, neither the sandbox nor the approvals remain, whichever of these files removes each one (the evidence names the other file); it is not when requirements.toml forbids the value. Legacy [profiles.<name>] tables of the user config.toml are reported as low: Codex 0.134.0 and later no longer read them.' `
+    -Description 'Checks the profile files (<codex home>/<name>.config.toml, selected with --profile <name>) for settings that weaken the defaults: sandbox_mode = "danger-full-access", default_permissions = ":danger-full-access", approval_policy = "never", sandbox_workspace_write.network_access = true and web_search = "live". One --profile flag then switches a session to that configuration. A profile is evaluated with the layers it applies with, in the documented precedence project config > profile > user config > system config: the config.toml of its Codex home and the system config below it, alone and under the project .codex/config.toml files of each folder (the root one and the nested ones, closest first). A profile setting counts only where it applies (sandbox_mode in any of these files takes precedence over default_permissions, and [sandbox_workspace_write] is ignored with permission profiles). The finding is high when, with the profile, neither the sandbox nor the approvals remain, whichever of these files removes each one (the evidence names the other file); it is not when requirements.toml forbids the value. Legacy [profiles.<name>] tables of the user config.toml are reported as low: Codex 0.134.0 and later no longer read them.' `
     -Fix 'Remove the weakening settings from the profile, or delete the profile, and run sessions that need broad access only inside an isolated container or VM. Delete legacy [profiles.<name>] tables from config.toml.' `
     -References @('OWASP-ASI02', 'OWASP-ASI05', $script:AwCdxDocs.Advanced, $script:AwCdxDocs.Basics, $script:AwCdxDocs.Security, $script:AwCdxDocs.Reference) `
     -Confidence 'high' -Check {
@@ -933,8 +1063,8 @@ Register-AwRule -Id 'AW-CDX-014' -Title 'Codex profile weakens the sandbox or th
                 if ($full.Key -eq 'default_permissions' -and (Test-AwCdxProfileForbidden $req $full.Value)) { continue }
                 if (Test-AwCdxForbidden $req 'allowed_approval_policies' 'never') { continue }
                 $both = $true
-                if (-not [object]::ReferenceEquals($full.Artifact, $a)) { $others.Add(('{0} = "{1}" ({2})' -f $full.Key, $full.Value, (Get-AwCdxScopeLabel $full.Artifact))) }
-                if (-not [object]::ReferenceEquals($never.Artifact, $a)) { $others.Add(('approval_policy = "never" ({0})' -f (Get-AwCdxScopeLabel $never.Artifact))) }
+                if (-not [object]::ReferenceEquals($full.Artifact, $a)) { $others.Add(('{0} = "{1}" ({2})' -f $full.Key, $full.Value, (Get-AwCdxScopeLabel $full.Artifact $Ctx))) }
+                if (-not [object]::ReferenceEquals($never.Artifact, $a)) { $others.Add(('approval_policy = "never" ({0})' -f (Get-AwCdxScopeLabel $never.Artifact $Ctx))) }
             }
             $list = @(foreach ($o in $order) { if ($held.ContainsKey($o[0])) { $o[1] } })
             if ($list.Count -eq 0) { continue }

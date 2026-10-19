@@ -18,6 +18,20 @@ OpenAI Codex CLI support.
   overrides the user config, a profile is evaluated over the user config of its Codex home and
   under the project config (project > profile > user), and a value that `requirements.toml` does
   not allow lowers the matching finding to `info`.
+- **Codex nested project layers.** Codex loads every `.codex/config.toml` from the project root
+  down to the working folder, the closest one winning. Discovery now also reads the
+  `.codex/config.toml` of the sub-folders (breadth first, up to 6 levels and 50 files, after at
+  most 10,000 folders examined; `.git`, dependency, build and virtual environment folders, links
+  and junctions are never entered; a cap reached is an `AW-CORE-001` finding), with the usual
+  size, budget and link checks. Their MCP servers go through the `AW-MCP` rules, and their
+  `[hooks]` tables through `AW-CDX-012`. The rules that combine settings check each folder with
+  its whole chain (nested > intermediate > root project config > user config > system config),
+  never combine a nested file without the files above it (a project is trusted or untrusted as a
+  whole), and name the nested file in the evidence (`project config in 'packages/app'`).
+- **Codex system config.** `/etc/codex/config.toml` is read as the lowest layer (`system` scope),
+  on the real machine only and on Unix only, since no Windows location is documented. Its values
+  are checked like those of the user config, and it sits at the bottom of every layer stack, its
+  MCP servers included.
 - **14 Codex rules** (`AW-CDX-001` to `AW-CDX-014`): the sandbox turned off
   (`danger-full-access`), `approval_policy = "never"` (critical when the sandbox is off too),
   network access in the `workspace-write` sandbox, permission profiles with unrestricted network,
@@ -77,6 +91,11 @@ OpenAI Codex CLI support.
   in another is now reported as high, and the evidence names the other file; a profile setting
   that applies in none of these combinations (a `default_permissions` that a `sandbox_mode` of the
   user config overrides, for example) is no longer listed.
+- **`AW-CDX-012` with two Codex homes:** when `CODEX_HOME` named a custom home and `~/.codex`
+  existed too, the hooks feature flag was looked up across both homes as one chain, so
+  `features.hooks = false` in the home that is not active could silence the findings. Each home
+  is now evaluated on its own, as the other Codex rules do, and so is each project folder: the
+  hooks are reported when they run in at least one of these layer stacks.
 - **PowerShell 7** (follow-up to 0.1.0):
   - with `-Redact`, the label of a root on a network share (`\\server\share`) was `.` instead of
     the share name, because .NET Core sees that path as a root without a file name;

@@ -73,7 +73,7 @@ It is built for:
       <h3>🧭 Effective permissions</h3>
       Resolves what actually applies, layer by layer: Claude Code managed policy &gt; local &gt;
       project &gt; user; VS Code default &lt; user &lt; workspace file &lt; workspace; Codex
-      project &gt; profile &gt; user config, within the limits of <code>requirements.toml</code>; and the
+      nested project &gt; project &gt; profile &gt; user &gt; system config, within the limits of <code>requirements.toml</code>; and the
       tools of a prompt file over those of its custom agent.
     </td>
   </tr>
@@ -193,14 +193,15 @@ Pass several formats as a list (`-Format Json, Sarif`).
 ## What it checks
 
 Airworthy analyzes five harness families, plus files any agent reads. It looks only at the
-locations below, not at the whole repository tree.
+locations below, not at the whole repository tree: the only search below the root is a bounded one
+for the `.codex/config.toml` files of sub-folders.
 
 | Harness | In the analyzed folder | In the user profile (skipped with `-NoUserProfile`) |
 | --- | --- | --- |
 | **VS Code GitHub Copilot** (custom agents and agent mode) | `.vscode/settings.json`, `*.code-workspace`, `.vscode/mcp.json`, `.github/agents/*.agent.md`, `.github/chatmodes/*.chatmode.md`, `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, `.github/prompts/*.prompt.md`, `.github/hooks/*.json` | VS Code and VS Code Insiders `User/settings.json` and `User/mcp.json` |
 | **Claude Code** | `.claude/settings.json`, `.claude/settings.local.json`, `.claude/agents/*.md`, `CLAUDE.md`, `.mcp.json` | `~/.claude/settings.json`, the MCP servers of `~/.claude.json`, and the machine-wide `managed-settings.json` when present |
 | **Copilot CLI** | `.github/copilot/settings.json`, `.github/copilot/settings.local.json`, `.github/mcp.json` | `~/.copilot/config.json`, `~/.copilot/settings.json`, `~/.copilot/mcp-config.json`, `~/.copilot/agents/*.agent.md`, `~/.copilot/hooks/*.json` |
-| **Codex CLI** | `.codex/config.toml` (with its MCP servers and hooks), `.codex/hooks.json`, `.codex/rules/*.rules` | `~/.codex/config.toml` and, when `CODEX_HOME` is set, `$CODEX_HOME/config.toml`; the profile files `<name>.config.toml` of those folders; the machine-wide `requirements.toml` when present |
+| **Codex CLI** | `.codex/config.toml` (with its MCP servers and hooks) and the `.codex/config.toml` of the sub-folders (up to 6 levels and 50 files), `.codex/hooks.json`, `.codex/rules/*.rules` | `~/.codex/config.toml` and, when `CODEX_HOME` is set, `$CODEX_HOME/config.toml`; the profile files `<name>.config.toml` of those folders; the machine-wide `requirements.toml` and, on Linux and macOS, `/etc/codex/config.toml`, when present |
 | **Any agent** | `AGENTS.md`, and `.env*` files at the root (secret scan) | |
 
 The rules fall into six weighted categories. The severities below are rule defaults: some rules
@@ -368,12 +369,23 @@ servers of VS Code, Claude Code, Copilot CLI and Codex CLI alike. To list the ru
 
 Codex CLI keeps its configuration in TOML files. Airworthy reads them with its own TOML parser,
 with no dependency and the same guards as its other parsers (a size limit, a depth limit and a
-linear tokenizer): an invalid or hostile file becomes an `AW-CORE-001` finding. The project
-`.codex/config.toml` overrides the user `config.toml`, and each profile file (`<name>.config.toml`,
-selected with `--profile <name>`) is checked with the layers it applies with: project config >
-profile > user config. As in Codex, `sandbox_mode` in any loaded file takes precedence over
+linear tokenizer): an invalid or hostile file becomes an `AW-CORE-001` finding.
+
+Settings are resolved layer by layer, as Codex does. Codex loads every `.codex/config.toml` from
+the project root down to the working folder, the closest one winning, so Airworthy also reads the
+`.codex/config.toml` of the sub-folders (up to 6 levels and 50 files, skipping `.git`,
+`node_modules`, `vendor`, build output, virtual environments and links) and checks each folder
+with its whole chain: **nested project config > intermediate folders > root project config >
+user config > system config** (`/etc/codex/config.toml`, read on the real machine only). Each
+Codex home (`CODEX_HOME` and `~/.codex`) is evaluated on its own, since only one is active in a
+session, and a nested file is never combined without the files above it: a trusted project loads
+all its layers, an untrusted one none. Each profile file (`<name>.config.toml`, selected with
+`--profile <name>`) is checked with the layers it applies with: project config > profile > user
+config > system config. As in Codex, `sandbox_mode` in any loaded file takes precedence over
 `default_permissions`, and `[sandbox_workspace_write]` does not apply with permission profiles.
-The 14 `AW-CDX` rules cover:
+Findings point to the file that sets the value, and the evidence names the other files of a
+combination (for example `project config in 'packages/app'` or `system config`). The 14 `AW-CDX`
+rules cover:
 
 - **Sandbox, approvals and trust:** the sandbox turned off with `sandbox_mode = "danger-full-access"`
   or `default_permissions = ":danger-full-access"` (`AW-CDX-001`); `approval_policy = "never"`,
@@ -521,8 +533,8 @@ jobs:
 - **Limited reads.** With `-NoUserProfile`, Airworthy reads only the analyzed folder (plus the
   `-UserSettingsPath` file, if you name one). By default it
   also reads the agent configuration files of your user profile listed in
-  [What it checks](#what-it-checks), and the machine-wide Claude Code `managed-settings.json` and
-  Codex `requirements.toml` if there are any. It never follows a symbolic link or junction out of the analyzed folder, and it
+  [What it checks](#what-it-checks), and the machine-wide Claude Code `managed-settings.json`,
+  Codex `requirements.toml` and, on Linux and macOS, Codex `/etc/codex/config.toml` if there are any. It never follows a symbolic link or junction out of the analyzed folder, and it
   writes nothing but the `-OutFile` reports you ask for.
 - **Masked secrets.** Secrets are never shown in full in any output: they keep their first 4 and
   last 2 characters and their length (`ghp_…34 (40 chars)`).
@@ -532,8 +544,8 @@ jobs:
 
 > [!WARNING]
 > `-Redact` masks the analyzed folder, the user profile and the user name. Other absolute paths,
-> such as a `-UserSettingsPath` file elsewhere, the machine-wide `managed-settings.json` and
-> `requirements.toml`, or the project paths listed in `~/.claude.json`, stay as they are (in SARIF,
+> such as a `-UserSettingsPath` file elsewhere, the machine-wide `managed-settings.json`,
+> `requirements.toml` and `/etc/codex/config.toml`, or the project paths listed in `~/.claude.json`, stay as they are (in SARIF,
 > as `file:///` URIs).
 > Review a report before you share it.
 
@@ -542,17 +554,19 @@ jobs:
 - **Static analysis only.** Airworthy reads files. It cannot see command-line flags, permissions
   granted during a session, or policies held elsewhere: GitHub organization and enterprise policies,
   VS Code policies deployed through the registry, Copilot CLI managed settings, or the Codex
-  `managed_config.toml` and `/etc/codex/config.toml` layers. Claude Code managed settings and the
-  Codex `requirements.toml` are read only from the real machine.
+  `managed_config.toml` and cloud-managed layers. Claude Code managed settings and the Codex
+  `requirements.toml` and `/etc/codex/config.toml` are read only from the real machine.
 - **A fast-moving target.** The rules follow the official documentation of each harness as read in
   October 2026. Harnesses change quickly, and 24 rules have `medium` confidence because the
   documentation is incomplete or contradictory.
 - **Heuristics.** The secret and instruction-text checks can produce false positives and miss
   things. The secret scan covers the discovered configuration files and the root `.env*` files: it
   does not replace a repository-wide secret scanner.
-- **Scope.** Only the known locations above are read: nested `AGENTS.md` files, `.codex/` folders
-  of sub-folders, personal Codex hooks and rules (`~/.codex/hooks.json`, `~/.codex/rules/`) and
-  sub-projects of a monorepo are not discovered. Files over 2 MB are skipped, each analysis reads at most 32 MB,
+- **Scope.** Only the known locations above are read: nested `AGENTS.md` files, the `hooks.json`
+  and `rules/` of the `.codex/` folders of sub-folders, personal Codex hooks and rules
+  (`~/.codex/hooks.json`, `~/.codex/rules/`) and the configuration of other harnesses in
+  sub-projects of a monorepo are not discovered. A sub-folder that is a Git repository of its own
+  is a separate Codex project, but its `.codex/config.toml` is still stacked under the root one. Files over 2 MB are skipped, each analysis reads at most 32 MB,
   and a file that cannot be read becomes an `AW-CORE-001` finding.
 - **Regex dialect.** VS Code terminal rules are JavaScript regexes; Airworthy evaluates them with
   .NET regexes under a short timeout, so a JavaScript-only feature makes a rule count as non-matching.

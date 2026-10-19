@@ -147,7 +147,8 @@ needs it fail to load, which is reported as `AW-CORE-002`.
 New-AwContext -Path <root> [-UserSettingsPath <file>] [-UserProfilePath <dir>] [-NoUserProfile]
 ```
 
-Discovery looks only at known locations. With `-NoUserProfile`, nothing outside the root is read,
+Discovery looks only at known locations; the one search of the tree is the bounded search for nested
+Codex project layers (see Codex CLI below). With `-NoUserProfile`, nothing outside the root is read,
 except a file given explicitly with `-UserSettingsPath`. Otherwise the user profile is the real
 one, or `-UserProfilePath`. `-UserSettingsPath` forces the VS Code user settings file in both cases.
 
@@ -165,7 +166,7 @@ one, or `-UserProfilePath`. `-UserSettingsPath` forces the VS Code user settings
 | `Hooks` | `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, Claude Code project settings that declare hooks, and the Codex project `.codex/hooks.json`. |
 | `ClaudeSettings` | Claude Code settings with their scope: `project`, `local`, `user`, `managed`. |
 | `CopilotCli` | Copilot CLI settings with their scope: `project`, `local`, `user`. |
-| `Codex` | Codex CLI config files (parsed TOML) with their scope: `user`, `project`, `profile`, `managed` (`requirements.toml`). |
+| `Codex` | Codex CLI config files (parsed TOML) with their scope: `user`, `project` (the root `.codex/config.toml`, then the nested ones), `profile`, `managed` (`requirements.toml`), `system` (`/etc/codex/config.toml`). |
 | `CodexRules` | Codex project `.codex/rules/*.rules` files, as text (`Data` is `$null`: the Starlark files are never evaluated). |
 | `TextFiles` | Files to scan for secrets: every artifact above plus the root `.env*` files. |
 | `Errors` | `AW-CORE-001` findings produced during discovery. |
@@ -182,7 +183,7 @@ missing property.
 | VS Code | `.vscode/settings.json`, `*.code-workspace` (`settings` key), `.vscode/mcp.json`, `.github/agents/*.agent.md`, `.github/chatmodes/*.chatmode.md`, `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, `.github/prompts/*.prompt.md`, `.github/hooks/*.json` | `Code/User` and `Code - Insiders/User`: `settings.json` and `mcp.json` |
 | Claude Code | `.claude/settings.json`, `.claude/settings.local.json`, `.claude/agents/*.md`, `CLAUDE.md`, `.mcp.json` | `~/.claude/settings.json`, `~/.claude.json` (`mcpServers` and `projects.*.mcpServers`), and the machine-wide `managed-settings.json` (real profile only: `%ProgramFiles%\ClaudeCode\` on Windows) |
 | Copilot CLI | `.github/copilot/settings.json`, `.github/copilot/settings.local.json`, `.github/mcp.json` | `~/.copilot/config.json`, `~/.copilot/settings.json`, `~/.copilot/mcp-config.json`, `~/.copilot/agents/*.agent.md`, `~/.copilot/hooks/*.json` |
-| Codex CLI | `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/*.rules` | In each Codex home: `config.toml` and the profile files `<name>.config.toml`; the machine-wide `requirements.toml` (real profile only: `%ProgramData%\OpenAI\Codex\` on Windows, `/etc/codex/` elsewhere) |
+| Codex CLI | `.codex/config.toml`, the `.codex/config.toml` of the folders below the root (nested layers), `.codex/hooks.json`, `.codex/rules/*.rules` | In each Codex home: `config.toml` and the profile files `<name>.config.toml`; the machine-wide `requirements.toml` (real profile only: `%ProgramData%\OpenAI\Codex\` on Windows, `/etc/codex/` elsewhere) and the system `config.toml` (real profile only: `/etc/codex/config.toml`, Unix only) |
 | Any | `AGENTS.md`, root `.env*` files | |
 
 MCP server lists are normalized from the `servers` key (VS Code), the `mcpServers` key
@@ -200,8 +201,22 @@ unchanged.
 - **Profile files.** Only `<name>.config.toml` files whose name has letters, digits, `-` and `_`
   are read, with the `profile` scope. They apply only with `--profile <name>`, so the rules check
   each one with the layers it applies with (see Effective settings).
+- **Nested project layers.** Codex loads every `.codex/config.toml` from the project root down to
+  the working folder. Discovery therefore also reads the `.codex/config.toml` of the folders below
+  the root, with the `project` scope: breadth first, in ordinal name order (a folder always comes
+  after its parents), at most 6 levels down and 50 files, after examining at most 10,000 folders.
+  It never enters `.git`, `.hg`, `.svn`, `.codex`, dependency folders (`node_modules`, `vendor`,
+  `bower_components`, `jspm_packages`), build output (`dist`, `build`, `out`, `target`, `.next`,
+  `.nuxt`, `.gradle`), virtual environments and caches (`.venv`, `venv`, `__pycache__`, `.tox`),
+  or a symbolic link or junction. A cap that is reached is reported as `AW-CORE-001`. Their MCP
+  servers join `McpFiles`. Only their `config.toml` is read: the `hooks.json` and `rules/` of
+  nested `.codex` folders are not.
 - **requirements.toml** is read with the `managed` scope, on the real machine only.
   `$script:AwCodexRequirementsOverride` replaces its location in tests.
+- **System config.** `/etc/codex/config.toml`, the lowest config layer, is read with the `system`
+  scope on the real machine only, and only on Unix: no Windows location is documented.
+  `$script:AwCodexSystemConfigOverride` replaces its location in tests. Its MCP servers join
+  `McpFiles`.
 - **Hooks and rules.** The project `.codex/hooks.json` joins `Hooks` with the `codex` harness;
   the `[hooks]` tables of the project `config.toml` are read from `Codex`. The project
   `.codex/rules/*.rules` files go to `CodexRules` as text.
@@ -229,6 +244,7 @@ Rules of the `generic` harness always run; the others run only when their harnes
 | Read budget per analysis | 32 MB | Further files are skipped (`AW-CORE-001`). |
 | Files per pattern | 500 | Only the first 500, sorted by name, are analyzed. |
 | Text files for the secret scan | 500 | Only the first 500 are kept. |
+| Nested Codex project layers | 6 levels, 50 files, 10,000 folders examined | The search stops (`AW-CORE-001`). |
 | Links | | A symbolic link or junction anywhere between the root and a file that resolves outside the root, to a network share or to a volume, makes the file skipped. Profile files are allowed outside the root by design. |
 
 ## Effective settings
@@ -258,14 +274,31 @@ Rules of the `generic` harness always run; the others run only when their harnes
 ### Codex CLI
 
 - Rules that depend on a combination of settings, such as `approval_policy = "never"` with full
-  access (`AW-CDX-002`), network access in the `workspace-write` sandbox (`AW-CDX-003`) or a
-  permission profile network without the network proxy (`AW-CDX-004`), stack the project
-  `.codex/config.toml` over each user config file: **project > user**. A value then counts only
-  where it decides. A user file also applies alone, in the folders that have no project config.
+  access (`AW-CDX-002`), network access in the `workspace-write` sandbox (`AW-CDX-003`), a
+  permission profile network without the network proxy (`AW-CDX-004`) or the hooks feature flag
+  (`AW-CDX-012`), evaluate **layer stacks** in the documented precedence
+  **project > user > system** (`Get-AwCdxLayers`, computed once per context):
+  - the project part of a stack is the **chain** of one project folder: its `.codex/config.toml`
+    and those of its parent folders up to the root, closest first (nested > intermediate > root);
+  - a project is trusted or not as a whole, and an untrusted project skips all its `.codex/`
+    layers, so a nested file never applies without the files above it, and sibling folders never
+    stack together. The stacks without a project part stand for the folders outside the project
+    and for an untrusted project;
+  - each Codex home (`CODEX_HOME` and `~/.codex`) gives its own stacks, because only one of them
+    is active in a session: a value in one home never overrides or silences the other;
+  - the system `config.toml` is at the bottom of every stack.
+
+  A value then counts only where it decides, and the evidence names the file that set each value
+  of a combination (`project config in 'packages/app'`, `system config`...).
 - Profile files apply only to the sessions started with `--profile`, so they are not merged into
   those stacks. Each one gets its own stacks (`AW-CDX-004`, `AW-CDX-014`), in the documented
-  precedence **project > profile > user**: the profile over the user `config.toml` of its own
-  Codex home, alone and under each project config.
+  precedence **project > profile > user > system**: the profile over the user `config.toml` of
+  its own Codex home and the system config, alone and under each project chain.
+- **Hooks.** The root `.codex/hooks.json` loads in every folder of the project, and the `[hooks]`
+  tables of a project config file in its folder and the folders below it. `AW-CDX-012` reports
+  them when hooks are on (`features.hooks`, or its alias `features.codex_hooks`, not `false` in the
+  highest file that sets it) in at least one stack where they load. When they are off in their
+  own folder but a nested file turns them back on, the evidence names that file.
 - **Sandbox model.** Permission profiles (`default_permissions`, `[permissions]`) and the older
   sandbox settings (`sandbox_mode`, `[sandbox_workspace_write]`) do not compose. In a stack, the
   older settings apply when any file sets `sandbox_mode`, and permission profiles otherwise when a
@@ -282,6 +315,10 @@ Rules of the `generic` harness always run; the others run only when their harnes
   `allowed_approval_policies`, `allowed_web_search_modes` or `allowed_permission_profiles` lowers
   the matching finding to `info`, and `allow_managed_hooks_only = true` or `features.hooks = false`
   silences the project hooks rule.
+- Not modeled: the cloud-managed defaults (delivered by the service, not stored in a file),
+  `managed_config.toml` (not read), `project_root_markers`, and a nested folder that is a project
+  root of its own (with its own `.git`): its layers are stacked under the root layers like any
+  other nested folder.
 - TOML keys and values are compared ordinally, as Codex does: a `Sandbox_Mode` key is not
   `sandbox_mode`.
 
