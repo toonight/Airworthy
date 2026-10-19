@@ -116,7 +116,7 @@ function Get-AwSecKeyBefore {
     param([string]$Text, [int]$Index)
     $lo = [Math]::Max(0, $Index - 120)
     $before = $Text.Substring($lo, $Index - $lo)
-    $nl = $before.LastIndexOf("`n")
+    $nl = $before.LastIndexOf([char]"`n")
     if ($nl -ge 0) { $before = $before.Substring($nl + 1) }
     $m = $script:AwSecKeyBeforeRegex.Match($before)
     if ($m.Success) { return $m.Groups['k'].Value }

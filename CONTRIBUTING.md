@@ -92,6 +92,17 @@ A repository can be crafted to attack the tool that analyzes it. Code that reads
 - never put a secret in full in a finding: mask values with `Hide-AwSecret`;
 - leave rendering to the output layer, which escapes everything for its format.
 
+**Keep whole file texts out of repeated .NET calls.** PowerShell 7.3+ logs every .NET method call
+made from script with the full text of its string arguments, so `$regex.Match($Text, $i)` or
+`[string]::IsNullOrEmpty($Raw)` costs time in proportion to the file size each time it runs. Never
+pass a whole file text to a .NET method inside a loop or once per finding: pass a bounded slice
+(`$Text.Substring($i, $n)`, as the TOML parser does with its window). Indexers (`$Text[$i]`),
+properties (`$Text.Length`) and operators (`-match`, `-split`) are fine. A test in
+`tests/Security.Tests.ps1` lists every method call in `src/` that receives `$T`, `$Text`, `$Raw`,
+`$inner` or `$Body` and compares the list with `tests/fixtures/security/large-arg-allowlist.json`. A
+new call fails it: pass a slice instead or, if the call runs a fixed number of times per file, add
+it to that file with the reason.
+
 ## Antivirus hygiene (mandatory)
 
 Airworthy is meant to run on locked-down corporate workstations, where endpoint protection inspects

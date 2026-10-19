@@ -120,7 +120,12 @@ needs it fail to load, which is reported as `AW-CORE-002`.
   conversion depends on the culture or the .NET version. Newlines in multi-line strings become LF.
 - A **linear scanner** reads the text once. Its regexes are runs of character classes, anchored
   with `\G` or matched against one bounded token, with every repetition atomic, so no input can
-  make them backtrack. Arrays and inline tables use an explicit stack.
+  make them backtrack. Arrays and inline tables use an explicit stack. The regexes run on a short
+  window of the text (1,024 characters, cut again when the position leaves it, larger for a long
+  token), never on the whole document: PowerShell 7.3+ logs every .NET method call made from
+  script with the full text of its string arguments, so a whole-document argument would cost time
+  in proportion to the file size at every step. A match that ends within 16 characters of the
+  window end is retried on a larger window, so results do not depend on the window size.
 - What TOML forbids is an error, not "last one wins": a duplicate key, a table defined twice, a
   key reused as a table, an invalid escape or an unterminated string. Errors are
   `FormatException`s with `Data['Line']` and `Data['Column']`; discovery masks token-like words in

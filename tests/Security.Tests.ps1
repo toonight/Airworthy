@@ -235,6 +235,165 @@ try {
         }
     }
 
+    Describe 'Security: whole file texts reach .NET methods only at reviewed call sites' {
+        # PowerShell 7.3+ logs every .NET method call made from script with the full text of its
+        # string arguments, so a call that receives a whole file text inside a loop costs the file
+        # size at every pass. Every method call whose arguments use a whole-text variable ($T,
+        # $Text, $Raw, $inner, $Body, or a member such as $s.T or $r.Raw) is listed with its reason
+        # in fixtures\security\large-arg-allowlist.json. Names other than T are matched without
+        # case, as PowerShell does; a lower-case $t is the usual short name for a token.
+        $allowFile = 'tests/fixtures/security/large-arg-allowlist.json'
+        $hint = 'PowerShell 7.3+ logs every .NET method call made from script with the full text of its string arguments. ' +
+            'Pass a bounded slice ($Text.Substring), an indexer or an operator instead; if the call runs a bounded number ' +
+            'of times per file, add it to ' + $allowFile + ' with the reason'
+        $isTextRef = {
+            # A whole-text variable or member used as a value, not as the target of a member access or an index.
+            param($n)
+            $name = $null
+            if ($n -is [System.Management.Automation.Language.VariableExpressionAst]) {
+                $name = $n.VariablePath.UserPath
+                $colon = $name.LastIndexOf(':', [StringComparison]::Ordinal)
+                if ($colon -ge 0) { $name = $name.Substring($colon + 1) }
+            } elseif ($n -is [System.Management.Automation.Language.MemberExpressionAst] -and
+                $n -isnot [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                $n.Member -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+                $name = $n.Member.Value
+            }
+            if ($null -eq $name) { return $false }
+            $lower = $name.ToLowerInvariant()
+            if (-not ($name -ceq 'T' -or $lower -ceq 'text' -or $lower -ceq 'raw' -or $lower -ceq 'inner' -or $lower -ceq 'body')) { return $false }
+            $parent = $n.Parent
+            if ($parent -is [System.Management.Automation.Language.MemberExpressionAst] -and [object]::ReferenceEquals($parent.Expression, $n)) { return $false }
+            if ($parent -is [System.Management.Automation.Language.IndexExpressionAst] -and [object]::ReferenceEquals($parent.Target, $n)) { return $false }
+            return $true
+        }
+        $collect = {
+            # Adds 'file | function | method' -> line numbers to Into for every call of Ast that passes
+            # a whole text. A call in a rule check is named after the rule ID.
+            param($Ast, [string]$File, $Into)
+            foreach ($call in $Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] }, $true)) {
+                $passes = $false
+                foreach ($arg in @($call.Arguments)) {
+                    # Nested script blocks are skipped: their own calls are checked on their own.
+                    if ($null -ne $arg -and @($arg.FindAll($isTextRef, $false)).Count -gt 0) { $passes = $true }
+                }
+                if (-not $passes) { continue }
+                $owner = '(script)'
+                $up = $call.Parent
+                while ($null -ne $up) {
+                    if ($up -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $owner = $up.Name; break }
+                    if ($up -is [System.Management.Automation.Language.CommandAst] -and $up.GetCommandName() -ceq 'Register-AwRule') {
+                        $els = $up.CommandElements
+                        for ($k = 0; $k + 1 -lt $els.Count; $k++) {
+                            if ($els[$k] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$k].ParameterName -ceq 'Id') {
+                                $id = $els[$k + 1]
+                                if ($id -is [System.Management.Automation.Language.StringConstantExpressionAst]) { $owner = 'rule ' + $id.Value }
+                                else { $owner = 'rule ' + $id.Extent.Text }
+                            }
+                        }
+                        break
+                    }
+                    $up = $up.Parent
+                }
+                $method = $call.Member.Extent.Text
+                if ($call.Static) { $method = $call.Expression.Extent.Text + '::' + $method }
+                $key = $File + ' | ' + $owner + ' | ' + $method
+                if (-not $Into.ContainsKey($key)) { $Into[$key] = New-Object System.Collections.Generic.List[int] }
+                $Into[$key].Add($call.Extent.StartLineNumber)
+            }
+        }
+        $found = New-Object System.Collections.Hashtable -ArgumentList ([StringComparer]::Ordinal)
+        $parseErrors = New-Object System.Collections.Generic.List[string]
+        $sources = @(Get-ChildItem -LiteralPath (Join-Path $moduleRoot 'src') -Recurse -File | Where-Object { $_.Extension -ceq '.ps1' })
+        foreach ($f in $sources) {
+            $rel = $f.FullName.Substring($moduleRoot.Length + 1).Replace('\', '/')
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+            foreach ($e in @($errors)) { if ($null -ne $e) { $parseErrors.Add($rel + ':' + $e.Extent.StartLineNumber + ' ' + $e.Message) } }
+            & $collect $ast $rel $found
+        }
+        $allow = & $aw { param($p) ConvertFrom-AwJsonc -Text ([System.IO.File]::ReadAllText($p)) } (Join-Path $moduleRoot $allowFile)
+        $expected = New-Object System.Collections.Hashtable -ArgumentList ([StringComparer]::Ordinal)
+        $badEntries = New-Object System.Collections.Generic.List[string]
+        foreach ($entry in @($allow['calls'])) {
+            $label = [string]$entry['file'] + ' | ' + [string]$entry['function'] + ' | ' + [string]$entry['method']
+            if (([string]$entry['file']).Length -eq 0 -or ([string]$entry['function']).Length -eq 0 -or
+                ([string]$entry['method']).Length -eq 0 -or ([string]$entry['why']).Trim().Length -eq 0) {
+                $badEntries.Add($label + ': file, function, method and why are required')
+            } elseif (-not (Test-Path -LiteralPath (Join-Path $moduleRoot ([string]$entry['file'])) -PathType Leaf)) {
+                $badEntries.Add($label + ': no such file')
+            } elseif ($expected.ContainsKey($label)) {
+                $badEntries.Add($label + ': listed twice')
+            } elseif (-not ($entry['count'] -is [int] -or $entry['count'] -is [long]) -or $entry['count'] -lt 1) {
+                $badEntries.Add($label + ': count must be a whole number of at least 1')
+            } else {
+                $expected[$label] = [int]$entry['count']
+            }
+        }
+        $foundKeys = [string[]]@($found.Keys)
+        [Array]::Sort($foundKeys, [StringComparer]::Ordinal)
+        $expectedKeys = [string[]]@($expected.Keys)
+        [Array]::Sort($expectedKeys, [StringComparer]::Ordinal)
+
+        It 'parses every source file and reads a well-formed allowlist' {
+            Assert-True ($sources.Count -ge 20) ('source files found: ' + $sources.Count)
+            Assert-Equal @() $parseErrors.ToArray() 'source files that do not parse'
+            Assert-Equal @() $badEntries.ToArray() $allowFile
+            Assert-True ($expected.Count -gt 0) 'the allowlist lists the reviewed call sites'
+        }
+        It 'counts whole texts passed as values, and not slices, indexers, operators, $t or nested script blocks' {
+            $sample = @'
+function Get-AwSample {
+    param([string]$Text, $s, [string]$Raw)
+    $a = $rx.Match($Text, 0)
+    $b = $rx.Match($s.T, 1)
+    $c = [string]::IsNullOrEmpty($script:Raw)
+    $d = $sb.Append(($TEXT + 'x'))
+    $e = $rx.Match($Text.Substring(0, 4))
+    $f = $sb.Append($Text[0])
+    $g = $sb.Append($Text.Length)
+    $h = $Text -replace 'a', 'b'
+    $i = $list.Sort({ param($x) $x.Equals($Raw) })
+    $j = $rx.Match($t)
+}
+Register-AwRule -Id 'AW-SEC-999' -Check { param($Ctx) $rx.IsMatch($Ctx.Body) }
+'@
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput($sample, [ref]$tokens, [ref]$errors)
+            Assert-Equal 0 @($errors).Count 'the sample parses'
+            $into = New-Object System.Collections.Hashtable -ArgumentList ([StringComparer]::Ordinal)
+            & $collect $ast 'sample' $into
+            $keys = [string[]]@($into.Keys)
+            [Array]::Sort($keys, [StringComparer]::Ordinal)
+            $got = @(foreach ($k in $keys) { $k + ' x' + $into[$k].Count })
+            Assert-Equal @('sample | Get-AwSample | Append x1', 'sample | Get-AwSample | Equals x1', 'sample | Get-AwSample | Match x2',
+                'sample | Get-AwSample | [string]::IsNullOrEmpty x1', 'sample | rule AW-SEC-999 | IsMatch x1') $got
+        }
+        It 'passes a whole file text to a .NET method only at a listed call site, and no more often' {
+            $extra = New-Object System.Collections.Generic.List[string]
+            foreach ($key in $foundKeys) {
+                $lines = $found[$key]
+                $allowed = 0
+                if ($expected.ContainsKey($key)) { $allowed = $expected[$key] }
+                if ($lines.Count -gt $allowed) {
+                    $extra.Add($key + ': ' + $lines.Count + ' call(s), allowed ' + $allowed + ' (lines ' + ($lines -join ', ') + ')')
+                }
+            }
+            Assert-Equal @() $extra.ToArray() $hint
+        }
+        It 'lists only call sites that still exist (lower or remove an entry when a call goes away)' {
+            $stale = New-Object System.Collections.Generic.List[string]
+            foreach ($key in $expectedKeys) {
+                $now = 0
+                if ($found.ContainsKey($key)) { $now = $found[$key].Count }
+                if ($now -lt $expected[$key]) { $stale.Add($key + ': allowed ' + $expected[$key] + ', found ' + $now) }
+            }
+            Assert-Equal @() $stale.ToArray() ('update ' + $allowFile)
+        }
+    }
+
     Describe 'Security: robustness against malformed files' {
         It 'does not crash on invalid UTF-8, a binary file, a very long line or deep nesting' {
             $repo = Join-Path $tmp 'malformed'

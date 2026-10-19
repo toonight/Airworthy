@@ -147,8 +147,10 @@ function Get-AwCdxLineAt {
     # 1-based line of Index in Text. Newlines are counted by string methods on 16K-character
     # chunks (small enough to stay off the large object heap), not one loop iteration per line:
     # a file of a million blank lines would otherwise cost a million iterations per finding.
+    # Text is never an argument of a .NET method (its Length is tested, not IsNullOrEmpty):
+    # PowerShell 7.3+ logs the full text of those arguments, once per finding here.
     param([string]$Text, [int]$Index)
-    if ($Index -le 0 -or [string]::IsNullOrEmpty($Text)) { return 1 }
+    if ($Index -le 0 -or $Text.Length -eq 0) { return 1 }
     if ($Index -gt $Text.Length) { $Index = $Text.Length }
     $line = 1
     for ($at = 0; $at -lt $Index; $at += 16384) {
@@ -181,10 +183,11 @@ function Get-AwCdxLine {
     or a dotted key), then the first Key after it. Without a header, Key at the start of a line.
     $null when nothing is found. Keys can come from the scanned file (paths of AW-CDX-005): a key
     longer than AwCdxMaxLineKey or with spaces around it is not searched, and the search after a
-    header stops after AwCdxLineWindow characters, so a lookup cannot turn quadratic.
+    header stops after AwCdxLineWindow characters, so a lookup cannot turn quadratic. Raw is tested
+    by its Length, as in Get-AwCdxLineAt.
     #>
     param([string]$Raw, [string[]]$Headers, [string]$Key)
-    if ([string]::IsNullOrEmpty($Raw)) { return $null }
+    if ($Raw.Length -eq 0) { return $null }
     if (-not [string]::IsNullOrEmpty($Key) -and ($Key.Length -gt $script:AwCdxMaxLineKey -or $Key.Trim().Length -ne $Key.Length)) { $Key = $null }
     $from = -1
     foreach ($h in @($Headers)) {
@@ -543,7 +546,16 @@ function Get-AwCdxAllowRules {
         }
         $scanned = $i
         $j = $i + $fn.Length
-        $j += $script:AwCdxRxBlank.Match($Text, $j).Length
+        # Blanks before '(' are matched on slices of 256 characters, never on the whole Text:
+        # PowerShell 7.3+ logs every .NET method call made from script with the full text of its
+        # string arguments, so one call per occurrence on a 2 MB file took seconds. A run of blanks
+        # that fills its slice goes on in the next one, so the end of the run is the same.
+        while ($j -lt $Text.Length -and ($Text[$j] -ceq ' ' -or $Text[$j] -ceq "`t")) {
+            $slice = [Math]::Min(256, $Text.Length - $j)
+            $run = $script:AwCdxRxBlank.Match($Text.Substring($j, $slice)).Length
+            $j += $run
+            if ($run -lt $slice) { break }
+        }
         $boundary = ($i -eq 0 -or -not ([char]::IsLetterOrDigit($Text[$i - 1]) -or $Text[$i - 1] -eq '_'))
         if ($j -lt $Text.Length -and $Text[$j] -eq '(' -and $commentAt -lt 0 -and $boundary) { $starts.Add($i) }
         $i = $Text.IndexOf($fn, $i + $fn.Length, [StringComparison]::Ordinal)

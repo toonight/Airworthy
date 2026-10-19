@@ -4,6 +4,7 @@ $aw = Get-Module Airworthy
 $fixtures = Join-Path $PSScriptRoot 'fixtures'
 $vsc = Join-Path $fixtures 'vscode'
 $layersUser = Join-Path $vsc 'layers-user\settings.json'
+$tmp = Join-Path $vsc ('_tmp-' + [guid]::NewGuid().ToString('N'))
 $coverage = @{}
 # Expected command names live in a JSON fixture, not in this script (CONTRIBUTING.md, Antivirus hygiene).
 $expected = & $aw { param($p) ConvertFrom-AwJsonc -Text ([System.IO.File]::ReadAllText($p)) } (Join-Path $vsc 'expectations.json')
@@ -59,6 +60,16 @@ function Get-FixtureLine([string]$File, [string]$Needle) {
 
 function Select-Evidence($Findings, [string]$Text) {
     return ,@($Findings | Where-Object { $_.Evidence.Contains($Text) })
+}
+
+function New-VscCase {
+    # A temporary workspace whose .vscode/settings.json holds Settings (removed by the line lookup tests).
+    param([string]$Settings)
+    $root = Join-Path $tmp ([guid]::NewGuid().ToString('N').Substring(0, 12))
+    $dir = Join-Path $root '.vscode'
+    [void][System.IO.Directory]::CreateDirectory($dir)
+    [System.IO.File]::WriteAllText((Join-Path $dir 'settings.json'), $Settings, (New-Object System.Text.UTF8Encoding($false)))
+    return $root
 }
 
 function Invoke-VscScan {
@@ -599,6 +610,54 @@ Describe 'AW-VSC end-to-end on the shared fixtures' {
         $g = @($r.Findings | Where-Object { $_.RuleId -eq 'AW-VSC-001' })
         Assert-NotMatch $g[0].Evidence ([regex]::Escape($profileDir))
         Assert-Match $g[0].Evidence 'set in user settings ~\\AppData\\Roaming\\Code\\User\\settings\.json'
+    }
+}
+
+Describe 'AW-VSC line lookups' {
+    try {
+        It 'counts newlines exactly across 16K chunk edges (Get-AwVscLineAt)' {
+            # LF every 7 characters (after a CR every other time), a 20,000-character line and a run of
+            # blank lines, so that chunk edges fall on, next to and between newlines.
+            $text = ("ab`r`ncd`n" * 6000) + ('x' * 20000) + "`n" + ("`n" * 40000) + 'end'
+            $idx = @(1, 2, 3, 6, 7, 16383, 16384, 16385, 32767, 32768, 32769, 41999, 42000, 62000, 62001, 62002, 90000, ($text.Length - 1), $text.Length)
+            $got = & $aw { param($t, $list) foreach ($i in $list) { Get-AwVscLineAt -Text $t -Index $i } } $text $idx
+            $want = foreach ($i in $idx) { ($text.Substring(0, $i) -split "`n").Count }
+            Assert-Equal @($want) @($got)
+        }
+        It 'returns line 1 at or before the start of the text, and on a text without newlines (Get-AwVscLineAt)' {
+            Assert-Equal 1 (& $aw { Get-AwVscLineAt -Text "a`nb" -Index 0 })
+            Assert-Equal 1 (& $aw { Get-AwVscLineAt -Text "a`nb" -Index -3 })
+            Assert-Equal 1 (& $aw { Get-AwVscLineAt -Text ('x' * 40000) -Index 39999 })
+        }
+        It 'finds a setting and one of its entries, in dotted or nested notation (Find-AwVscLine)' {
+            $text = "{`n  // c`n  `"chat.tools.urls.autoApprove`": {`n    `"a`": true,`n    `"https://*`": true`n  },`n  `"chat`": { `"agent`": {`n    `"maxRequests`": 500 } }`n}"
+            Assert-Equal 3 (& $aw { param($t) Find-AwVscLine -Text $t -Key 'chat.tools.urls.autoApprove' } $text)
+            Assert-Equal 5 (& $aw { param($t) Find-AwVscLine -Text $t -Key 'chat.tools.urls.autoApprove' -EntryKey 'https://*' } $text)
+            Assert-Equal 3 (& $aw { param($t) Find-AwVscLine -Text $t -Key 'chat.tools.urls.autoApprove' -EntryKey 'missing' } $text)
+            Assert-Equal 8 (& $aw { param($t) Find-AwVscLine -Text $t -Key 'chat.agent.maxRequests' } $text)
+        }
+        It 'returns $null for an empty or missing text, or a setting that is not in it (Find-AwVscLine)' {
+            Assert-Equal $null (& $aw { Find-AwVscLine -Text '' -Key 'chat.agent.maxRequests' })
+            Assert-Equal $null (& $aw { Find-AwVscLine -Text $null -Key 'chat.agent.maxRequests' -EntryKey 'x' })
+            Assert-Equal $null (& $aw { Find-AwVscLine -Text '{ "chat.agent.other": 1 }' -Key 'chat.agent.maxRequests' })
+        }
+        It 'locates entries after 1.5 MB of padding on their exact lines, in under 2 seconds' {
+            # 224,694 short comment lines (CR LF line ends), then URL entries, one per line. Every
+            # finding used to count the newlines of the whole padding with a regex.
+            $pad = 224694
+            $entries = foreach ($k in 0..99) { '    "https://h{0:d4}.example.invalid/*": true' -f $k }
+            $text = "{`r`n" + ("  //x`r`n" * $pad) + "  `"chat.tools.urls.autoApprove`": {`r`n" + ($entries -join ",`r`n") + "`r`n  }`r`n}`r`n"
+            $ctx = & $aw { param($p) New-AwContext -Path $p -NoUserProfile } (New-VscCase $text)
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $f = Invoke-VscRule 'AW-VSC-010' $ctx
+            $ms = $sw.ElapsedMilliseconds
+            Assert-Equal @(0..99 | ForEach-Object { $pad + 3 + $_ }) @($f | ForEach-Object { $_.Location.Line })
+            Assert-Match $f[0].Evidence '^chat\.tools\.urls\.autoApprove "https://h0000\.example\.invalid/\*" auto-approves requests and responses for every path of the host'
+            Assert-Match $f[99].Evidence '"https://h0099\.'
+            Assert-True ($ms -lt 2000) "AW-VSC-010 took $ms ms"
+        }
+    } finally {
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
     }
 }
 

@@ -439,7 +439,7 @@ function Read-AwFrontmatter {
         $records = New-Object System.Collections.ArrayList
         if ($yaml.Length -gt $script:AwYamlMaxChars) {
             $errors.Add("frontmatter larger than $($script:AwYamlMaxChars) characters; the rest was ignored")
-            $cut = $yaml.LastIndexOf("`n", $script:AwYamlMaxChars - 1)
+            $cut = $yaml.LastIndexOf([char]"`n", $script:AwYamlMaxChars - 1)
             $yaml = if ($cut -gt 0) { $yaml.Substring(0, $cut) } else { '' }
         }
         $rawLines = $yaml -split "`n"

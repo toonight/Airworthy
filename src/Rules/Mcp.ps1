@@ -191,7 +191,10 @@ function Format-AwCommandSnippet {
     # Evidence text for a command line, URL or path, shared by the MCP, Claude Code and Copilot CLI rules:
     # well-known tokens, secret-looking name=value pairs and flags, and URL passwords are masked, then the text is shortened.
     param([string]$Text, [int]$Max = 100)
-    if ([string]::IsNullOrEmpty($Text)) { return '' }
+    # $Text.Length, not IsNullOrEmpty($Text): Text can be a whole command line or hook command of a
+    # scanned file, once per finding, and PowerShell 7.3+ logs every .NET method call made from script
+    # with the full text of its string arguments. Text is passed to no .NET method before it is cut.
+    if ($Text.Length -eq 0) { return '' }
     $t = ($Text -replace '[\r\n\t]+', ' ').Trim()
     if ($t.Length -gt 4 * $Max + 256) { $t = $t.Substring(0, 4 * $Max + 256) }
     $t = [regex]::Replace($t, $script:AwMcpTokenPattern, { param($m) Hide-AwSecret -Value $m.Value })
@@ -602,7 +605,9 @@ function Get-AwMcpServers {
 function Get-AwMcpLine {
     # Best-effort line of Needle inside a server entry, or of the server name itself.
     param([string]$Raw, [string]$Server, [string]$Needle)
-    if ([string]::IsNullOrEmpty($Raw)) { return $null }
+    # $Raw.Length, not IsNullOrEmpty($Raw): PowerShell 7.3+ logs every .NET method call made from
+    # script with the full text of its string arguments, and this runs once per finding.
+    if ($Raw.Length -eq 0) { return $null }
     $start = 0
     $name = $Server
     # 'name (project: path)' entries of ~/.claude.json. String search, not a regex: server names come

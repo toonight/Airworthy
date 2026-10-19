@@ -65,6 +65,16 @@ OpenAI Codex CLI support.
 
 ### Fixed
 
+- **Slow analysis on PowerShell 7.3+:** PowerShell 7.3+ logs every .NET method call made from
+  script with the full text of its string arguments. The TOML parser, the Codex rules scanner, the
+  JSON string decoder and some per-finding line helpers passed whole file texts to such calls in
+  loops, so a hostile 2 MB file could take minutes (or, for a JSON string full of escapes, much
+  longer) on PowerShell 7 while it took under a second on Windows PowerShell 5.1. They now pass
+  bounded slices, with identical results, and a test fails on any new whole-text call in a loop.
+- **Line numbers on PowerShell 7 with CRLF files:** some newline searches used the
+  culture-sensitive string overload, which on .NET 5+ can miss a line feed after a carriage
+  return. They now search for the character.
+
 - **`AW-SEC-009` false positive on Codex MCP servers:** the values of `env_http_headers` (for
   example `"X-Api-Key" = "DOCS_API_KEY"`), `bearer_token_env_var` and `env_vars` are environment
   variable names, not secrets, and are no longer reported. A value that is not a valid variable

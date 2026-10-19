@@ -18,6 +18,13 @@ $script:AwJsoncTokenRegex = New-Object System.Text.RegularExpressions.Regex -Arg
 $script:AwJsoncGroupT = $script:AwJsoncTokenRegex.GroupNumberFromName('t')
 $script:AwJsoncGroupE = $script:AwJsoncTokenRegex.GroupNumberFromName('e')
 
+# The valid prefix of a string body: plain characters, simple escapes and \u with 4 hex digits
+# (atomic: no backtracking). It stops at the backslash of the first invalid escape.
+$script:AwJsoncEscapeRegex = New-Object System.Text.RegularExpressions.Regex -ArgumentList @(
+    '\G(?>(?:[^\\]+|\\["\\/bfnrt]|\\u[0-9A-Fa-f]{4})*)',
+    [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+)
+
 function New-AwOrdinalHashtable {
     # Case-sensitive hashtable, used for every parsed JSON object and YAML map.
     New-Object System.Collections.Hashtable -ArgumentList @([System.StringComparer]::Ordinal)
@@ -28,7 +35,7 @@ function New-AwJsoncError {
     param([string]$Text, [int]$Index, [string]$Message)
     if ($Index -gt $Text.Length) { $Index = $Text.Length }
     $line = 1; $lineStart = 0
-    for ($p = $Text.IndexOf("`n"); $p -ge 0 -and $p -lt $Index; $p = $Text.IndexOf("`n", $p + 1)) {
+    for ($p = $Text.IndexOf([char]"`n"); $p -ge 0 -and $p -lt $Index; $p = $Text.IndexOf([char]"`n", $p + 1)) {
         $line++; $lineStart = $p + 1
     }
     $column = $Index - $lineStart + 1
@@ -48,35 +55,32 @@ function Format-AwJsoncSnippet {
 
 function ConvertFrom-AwJsonString {
     # Unescapes a JSON string token (quotes included). Throws a message on a bad escape.
+    # The body is checked in one pass, then escaped backslashes become NUL (the tokenizer lets no
+    # raw NUL into a string, and the check rejects a backslash followed by NUL), so the other
+    # escapes are replaced in bulk; only \u escapes are decoded one by one. PowerShell 7.3+ logs
+    # every .NET method call made from script with the full text of its string arguments, so the
+    # loop passes only the gaps between escapes, never the whole body.
     param([string]$Token)
     $inner = $Token.Substring(1, $Token.Length - 2)
     if ($inner.IndexOf([char]'\') -lt 0) { return $inner }
-    $sb = New-Object System.Text.StringBuilder -ArgumentList $inner.Length
-    $i = 0; $len = $inner.Length
-    while ($i -lt $len) {
-        $j = $inner.IndexOf([char]'\', $i)
-        if ($j -lt 0) { [void]$sb.Append($inner, $i, $len - $i); break }
-        if ($j -gt $i) { [void]$sb.Append($inner, $i, $j - $i) }
-        $esc = [string]$inner[$j + 1]
-        $i = $j + 2
-        switch -CaseSensitive ($esc) {
-            '"'  { [void]$sb.Append('"') }
-            '\'  { [void]$sb.Append('\') }
-            '/'  { [void]$sb.Append('/') }
-            'b'  { [void]$sb.Append("`b") }
-            'f'  { [void]$sb.Append("`f") }
-            'n'  { [void]$sb.Append("`n") }
-            'r'  { [void]$sb.Append("`r") }
-            't'  { [void]$sb.Append("`t") }
-            'u'  {
-                $hex = if ($j + 6 -le $len) { $inner.Substring($j + 2, 4) } else { '' }
-                if ($hex -notmatch '^[0-9A-Fa-f]{4}$') { throw 'Invalid \u escape (expected 4 hexadecimal digits)' }
-                [void]$sb.Append([char][Convert]::ToInt32($hex, 16))
-                $i = $j + 6
-            }
-            default { throw ("Invalid escape sequence '\" + $esc + "'") }
-        }
+    $valid = $script:AwJsoncEscapeRegex.Match($inner).Length
+    if ($valid -lt $inner.Length) {
+        $esc = [string]$inner[$valid + 1]
+        if ($esc -ceq 'u') { throw 'Invalid \u escape (expected 4 hexadecimal digits)' }
+        throw ("Invalid escape sequence '\" + $esc + "'")
     }
+    $t = $inner.Replace('\\', "`0").Replace('\"', '"').Replace('\/', '/').Replace('\b', "`b").Replace('\f', "`f").Replace('\n', "`n").Replace('\r', "`r").Replace('\t', "`t")
+    $i = $t.IndexOf([char]'\')
+    if ($i -lt 0) { return $t.Replace("`0", '\') }
+    $sb = New-Object System.Text.StringBuilder -ArgumentList $t.Length
+    $from = 0
+    while ($i -ge 0) {
+        if ($i -gt $from) { [void]$sb.Append($t.Substring($from, $i - $from).Replace("`0", '\')) }
+        [void]$sb.Append([char][Convert]::ToInt32($t.Substring($i + 2, 4), 16))
+        $from = $i + 6
+        $i = $t.IndexOf([char]'\', $from)
+    }
+    if ($from -lt $t.Length) { [void]$sb.Append($t.Substring($from).Replace("`0", '\')) }
     return $sb.ToString()
 }
 

@@ -192,7 +192,9 @@ function Find-AwLineNumber {
     #>
     [CmdletBinding()]
     param([string]$Text, [string]$Needle)
-    if ([string]::IsNullOrEmpty($Text) -or [string]::IsNullOrEmpty($Needle)) { return $null }
+    # $Text.Length, not IsNullOrEmpty($Text): PowerShell 7.3+ logs every .NET method call made from
+    # script with the full text of its string arguments, and this runs once per finding.
+    if ($Text.Length -eq 0 -or [string]::IsNullOrEmpty($Needle)) { return $null }
     $index = $Text.IndexOf($Needle, [StringComparison]::Ordinal)
     if ($index -lt 0) { return $null }
     $line = 1

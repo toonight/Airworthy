@@ -378,6 +378,30 @@ try {
             $g = Assert-Flags 'AW-MCP-004' '{ "command": "bash", "args": ["-c", "DB_PASSWORD=FAKEpw12 ./server --secret FAKE-s3"] }' 'masked inline code'
             Assert-NotMatch $g.Evidence 'FAKEpw12|FAKE-s3'
         }
+        It 'flattens and cuts long text, and returns an empty string for no text (Format-AwCommandSnippet)' {
+            Assert-Equal 'npx -y pkg' (& $aw { Format-AwCommandSnippet -Text "  npx`r`n`t-y pkg  " })
+            Assert-Equal ('npx ' + ('x' * 16) + '...') (& $aw { Format-AwCommandSnippet -Text ('npx ' + ('x' * 300)) -Max 20 })
+            Assert-Equal 53 (& $aw { Format-AwCommandSnippet -Text ('a b ' * 500000) -Max 50 }).Length
+            Assert-Equal '' (& $aw { Format-AwCommandSnippet -Text '' })
+            Assert-Equal '' (& $aw { Format-AwCommandSnippet -Text $null })
+        }
+    }
+
+    Describe 'MCP rules: line lookups' {
+        $raw = "{`n  `"servers`": {`n    `"a`": { `"command`": `"x`" },`n    `"s`": {`n      `"command`": `"node`",`n      `"args`": [`"s.js`"]`n    }`n  }`n}"
+        It 'returns the line of the needle inside the server entry, or of the server itself (Get-AwMcpLine)' {
+            Assert-Equal 6 (& $aw { param($r) Get-AwMcpLine -Raw $r -Server 's' -Needle '"args"' } $raw)
+            Assert-Equal 5 (& $aw { param($r) Get-AwMcpLine -Raw $r -Server 's' -Needle '"command"' } $raw)
+            Assert-Equal 4 (& $aw { param($r) Get-AwMcpLine -Raw $r -Server 's' -Needle '"url"' } $raw)
+            Assert-Equal 4 (& $aw { param($r) Get-AwMcpLine -Raw $r -Server 's' -Needle $null } $raw)
+            $toml = "model = 1`n[mcp_servers.github]`ncommand = 1`n[mcp_servers.git]`ncommand = 2"
+            Assert-Equal 4 (& $aw { param($r) Get-AwMcpLine -Raw $r -Server 'git' -Needle '"command"' } $toml)
+        }
+        It 'returns $null for an empty or missing text, or a server that is not in it (Get-AwMcpLine)' {
+            Assert-Equal $null (& $aw { Get-AwMcpLine -Raw '' -Server 's' -Needle '"args"' })
+            Assert-Equal $null (& $aw { Get-AwMcpLine -Raw $null -Server 's' -Needle '"args"' })
+            Assert-Equal $null (& $aw { param($r) Get-AwMcpLine -Raw $r -Server 'missing' -Needle '"args"' } $raw)
+        }
     }
 
     Describe 'MCP rules: hostile input' {

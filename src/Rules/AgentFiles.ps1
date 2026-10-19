@@ -100,8 +100,8 @@ function Get-AwAgtLineText {
     if ([string]::IsNullOrEmpty($Text)) { return '' }
     if ($Index -ge $Text.Length) { $Index = $Text.Length - 1 }
     $start = 0
-    if ($Index -gt 0) { $start = $Text.LastIndexOf("`n", $Index - 1) + 1 }
-    $end = $Text.IndexOf("`n", $Index)
+    if ($Index -gt 0) { $start = $Text.LastIndexOf([char]"`n", $Index - 1) + 1 }
+    $end = $Text.IndexOf([char]"`n", $Index)
     if ($end -lt 0) { $end = $Text.Length }
     if ($Index - $start -gt 500) { $start = $Index - 500 }
     if ($end - $Index -gt 500) { $end = $Index + 500 }
@@ -694,7 +694,7 @@ Register-AwRule -Id 'AW-AGT-008' -Title 'Hidden instruction in an HTML comment' 
                 $count++
                 $severity = $null; $note = ''
                 if ($af.Kind -eq 'claude-md') {
-                    $lineStart = $text.LastIndexOf("`n", [Math]::Max(0, $c.Index - 1)) + 1
+                    $lineStart = $text.LastIndexOf([char]"`n", [Math]::Max(0, $c.Index - 1)) + 1
                     $blockLevel = $text.Substring($lineStart, $c.Index - $lineStart).Trim().Length -eq 0
                     $inFence = (@($fences | Where-Object { $_ -lt $c.Index }).Count % 2) -eq 1
                     if ($blockLevel -and -not $inFence) {

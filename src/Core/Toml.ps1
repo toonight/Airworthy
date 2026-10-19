@@ -26,7 +26,6 @@ $script:AwTomlRxTrivia     = [regex]'\G(?>(?:[ \t]|\r?\n|#[^\x00-\x08\x0A-\x1F\x
 $script:AwTomlRxLineEnd    = [regex]'\G(?>[ \t]*)(?>(?:#[^\x00-\x08\x0A-\x1F\x7F]*)?)'
 $script:AwTomlRxBareKey    = [regex]'\G[A-Za-z0-9_-]+'
 $script:AwTomlRxToken      = [regex]'\G[0-9A-Za-z_+.:-]+'
-$script:AwTomlRxSpaceDigit = [regex]'\G [0-9]'
 $script:AwTomlRxBasic      = [regex]'\G(?>(?:[^"\\\x00-\x08\x0A-\x1F\x7F]+|\\[^\x00-\x08\x0A-\x1F\x7F])*)'
 $script:AwTomlRxMlBasic    = [regex]'\G(?>(?:[^"\\\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+|\\[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|"(?!""))*)'
 $script:AwTomlRxLiteral    = [regex]'\G[^''\x00-\x08\x0A-\x1F\x7F]*'
@@ -48,6 +47,20 @@ $script:AwTomlRxDateTime   = [regex]'^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt ]([0-9
 $script:AwTomlRxDate       = [regex]'^([0-9]{4})-([0-9]{2})-([0-9]{2})\z'
 $script:AwTomlRxTime       = [regex]'^([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.(?>[0-9]+))?\z'
 
+# PowerShell 7.3+ logs every .NET method call made from script with the full text of its string
+# arguments, so a regex call on the whole 2 MB document costs about 2 ms there. The scanner
+# therefore runs its regexes on a window: a copy of AwTomlWindow characters of the document, cut
+# again when the position leaves it. A match that ends within AwTomlWindowMargin characters of
+# the window end might go on past it, so Find-AwTomlMatch matches it again on larger windows. A
+# match that ends before the margin is the match on the whole document, because each windowed
+# regex reads at most this many characters past the end of its match:
+#   0  Ws, BareKey, Token, Literal, LineEnd
+#   1  Trivia, Basic
+#   2  MlBasic, MlLiteral
+# The margin must stay above the largest of these: a new windowed regex goes in this table first.
+$script:AwTomlWindow       = 1024
+$script:AwTomlWindowMargin = 16
+
 function New-AwTomlError {
     # FormatException whose Data holds the 1-based Line and Column of Index.
     param([string]$Text, [int]$Index, [string]$Message)
@@ -65,6 +78,60 @@ function New-AwTomlError {
 function New-AwTomlBudgetError {
     param($s, [int]$Index)
     return (New-AwTomlError $s.T $Index "The document is too complex: more than $($script:AwTomlMaxSteps) parse steps (keys, values, strings and escapes)")
+}
+
+function Move-AwTomlWindow {
+    # Cuts a window at From; returns it, its start and its limit, and keeps them in $s.
+    param($s, [int]$From)
+    $n = $s.T.Length
+    $size = $script:AwTomlWindow
+    $limit = $From + $size - $script:AwTomlWindowMargin
+    if ($size -ge $n - $From) { $size = $n - $From; $limit = $n }
+    $W = $s.T.Substring($From, $size)
+    $s.W = $W; $s.Wb = $From; $s.Wl = $limit
+    return @($W, $From, $limit)
+}
+
+function Find-AwTomlMatch {
+    # The match of Rx at At, when a windowed match ended inside the margin: retried on a window cut
+    # at At, then on windows sixteen times larger, until it ends before the margin of one (or the
+    # window reaches the end). Returns the match, then the new window, its start and its limit.
+    # With the default window, a 2 MB token is also matched on 1K, 16K and 256K characters before
+    # the rest of the document: about 1.15 times the work of one match on the whole document.
+    # The window is cut here as Move-AwTomlWindow cuts it, since on Windows PowerShell 5.1 a
+    # function call costs more than the cut.
+    param($s, $Rx, [int]$At)
+    $T = $s.T; $n = $T.Length
+    $size = $script:AwTomlWindow
+    $limit = $At + $size - $script:AwTomlWindowMargin
+    if ($size -ge $n - $At) { $size = $n - $At; $limit = $n }
+    $W = $T.Substring($At, $size)
+    $m = $Rx.Match($W, 0)
+    if ($At + $m.Length -le $limit) {
+        $s.W = $W; $s.Wb = $At; $s.Wl = $limit
+        return @($m, $W, $At, $limit)
+    }
+    do {
+        $size *= 16
+        $limit = $At + $size - $script:AwTomlWindowMargin
+        if ($size -ge $n - $At) { $size = $n - $At; $limit = $n }
+        $G = $T.Substring($At, $size)
+        $m = $Rx.Match($G, 0)
+    } while ($At + $m.Length -gt $limit)
+    # A match that fits the first larger window keeps it: a fast path that gives up hands the same
+    # token to the next reader, which then matches it again without a new cut.
+    if ($size -le 16 * $script:AwTomlWindow) {
+        $s.W = $G; $s.Wb = $At; $s.Wl = $limit
+        return @($m, $G, $At, $limit)
+    }
+    # The next match starts where this long one ends (or at At again after a failed fast path).
+    $from = $At + $m.Length
+    $size = $script:AwTomlWindow
+    $limit = $from + $size - $script:AwTomlWindowMargin
+    if ($size -ge $n - $from) { $size = $n - $from; $limit = $n }
+    $W = $T.Substring($from, $size)
+    $s.W = $W; $s.Wb = $from; $s.Wl = $limit
+    return @($m, $W, $from, $limit)
 }
 
 function Format-AwTomlFound {
@@ -154,6 +221,7 @@ function Read-AwTomlString {
     param($s, [bool]$AllowMultiline)
     $T = $s.T
     $p = $s.P
+    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
     $s.Steps++
     if ($s.Steps -gt $script:AwTomlMaxSteps) { throw (New-AwTomlBudgetError $s $p) }
     $q = $T[$p]
@@ -163,7 +231,13 @@ function Read-AwTomlString {
     }
     $basic = ($q -eq '"')
     $start = $p + 1
-    if ($basic) { $m = $script:AwTomlRxBasic.Match($T, $start) } else { $m = $script:AwTomlRxLiteral.Match($T, $start) }
+    if ($basic) { $rx = $script:AwTomlRxBasic } else { $rx = $script:AwTomlRxLiteral }
+    if ($basic -and $s.BasicAt -eq $start) { $m = $s.BasicMatch }
+    else {
+        if ($start -lt $wb -or $start -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $start }
+        $m = $rx.Match($W, $start - $wb)
+        if ($start + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rx $start }
+    }
     $end = $start + $m.Length
     if ($T[$end] -ne $q) {
         $c = $T[$end]
@@ -186,12 +260,16 @@ function Read-AwTomlMultilineString {
     param($s)
     $T = $s.T
     $p = $s.P
+    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
     $s.Steps++
     if ($s.Steps -gt $script:AwTomlMaxSteps) { throw (New-AwTomlBudgetError $s $p) }
     $q = $T[$p]
     $basic = ($q -eq '"')
     $start = $p + 3
-    if ($basic) { $m = $script:AwTomlRxMlBasic.Match($T, $start) } else { $m = $script:AwTomlRxMlLiteral.Match($T, $start) }
+    if ($basic) { $rx = $script:AwTomlRxMlBasic } else { $rx = $script:AwTomlRxMlLiteral }
+    if ($start -lt $wb -or $start -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $start }
+    $m = $rx.Match($W, $start - $wb)
+    if ($start + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rx $start }
     $end = $start + $m.Length
     if (-not ($T[$end] -eq $q -and $T[$end + 1] -eq $q -and $T[$end + 2] -eq $q)) {
         if ($end -ge $s.End) { throw (New-AwTomlError $T $p 'Unterminated multi-line string') }
@@ -316,6 +394,7 @@ function Read-AwTomlKey {
     param($s)
     $T = $s.T
     $p = $s.P
+    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
     $start = $p
     $parts = [System.Collections.Generic.List[string]]::new()
     $limit = $script:AwTomlMaxDepth + 1
@@ -325,17 +404,30 @@ function Read-AwTomlKey {
             $s.P = $p
             $parts.Add((Read-AwTomlString $s $false))
             $p = $s.P
+            $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
+        } elseif ($p -eq $s.KeyAt) {
+            # The caller already read this bare part and its spaces; the spaces match below is empty.
+            $parts.Add($s.KeyHead)
+            $p = $s.KeyNext
         } else {
-            $m = $script:AwTomlRxBareKey.Match($T, $p)
+            if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+            $m = $script:AwTomlRxBareKey.Match($W, $p - $wb)
+            if ($p + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxBareKey $p }
             if ($m.Length -eq 0) { throw (New-AwTomlError $T $p ('Expected a key, found ' + (Format-AwTomlFound $s $p))) }
             $parts.Add($m.Value)
             $p += $m.Length
         }
         if ($parts.Count -gt $limit) { throw (New-AwTomlError $T $start "Maximum nesting depth of $($script:AwTomlMaxDepth) exceeded by a dotted key") }
-        $p += $script:AwTomlRxWs.Match($T, $p).Length
+        if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+        $mw = $script:AwTomlRxWs.Match($W, $p - $wb)
+        if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxWs $p }
+        $p += $mw.Length
         if ($T[$p] -ne '.') { break }
         $p++
-        $p += $script:AwTomlRxWs.Match($T, $p).Length
+        if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+        $mw = $script:AwTomlRxWs.Match($W, $p - $wb)
+        if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxWs $p }
+        $p += $mw.Length
     }
     $s.Steps += 1 + $parts.Count
     if ($s.Steps -gt $script:AwTomlMaxSteps) { throw (New-AwTomlBudgetError $s $start) }
@@ -479,6 +571,7 @@ function Read-AwTomlInlineKey {
     param($s, $Frame)
     $T = $s.T
     $at = $s.P
+    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
     $maxSteps = $script:AwTomlMaxSteps
     $s.Steps++
     if ($s.Steps -gt $maxSteps) { throw (New-AwTomlBudgetError $s $at) }
@@ -487,24 +580,33 @@ function Read-AwTomlInlineKey {
     if ($c -eq "`n" -or $c -eq "`r" -or $c -eq '#') { throw (New-AwTomlError $T $at ('An inline table must stay on one line, found ' + (Format-AwTomlFound $s $at))) }
     # A single bare key is read without the general key reader.
     $parts = $null
-    $m = $script:AwTomlRxBareKey.Match($T, $at)
+    if ($at -lt $wb -or $at -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $at }
+    $m = $script:AwTomlRxBareKey.Match($W, $at - $wb)
+    if ($at + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxBareKey $at }
     if ($m.Length -gt 0) {
         $p = $at + $m.Length
-        $p += $script:AwTomlRxWs.Match($T, $p).Length
+        if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+        $mw = $script:AwTomlRxWs.Match($W, $p - $wb)
+        if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxWs $p }
+        $p += $mw.Length
         if ($T[$p] -eq '=') {
             $parts = [string[]]@($m.Value)
             $s.Steps++
             if ($s.Steps -gt $maxSteps) { throw (New-AwTomlBudgetError $s $at) }
-        }
+        } else { $s.KeyAt = $at; $s.KeyHead = $m.Value; $s.KeyNext = $p }
     }
     if ($null -eq $parts) {
         Read-AwTomlKey $s
         $parts = $s.KeyParts
         $p = $s.P
+        $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
         if ($T[$p] -ne '=') { throw (New-AwTomlError $T $p ("Expected '=' after the key '" + (Format-AwTomlKey $parts) + "', found " + (Format-AwTomlFound $s $p))) }
     }
     $p++
-    $s.P = $p + $script:AwTomlRxWs.Match($T, $p).Length
+    if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+    $mw = $script:AwTomlRxWs.Match($W, $p - $wb)
+    if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxWs $p }
+    $s.P = $p + $mw.Length
     $target = $Frame.Map
     $s.Depth = $Frame.Depth
     if ($parts.Count -gt 1) { $target = Resolve-AwTomlDotted $s $Frame.Map $Frame.Depth $Frame.Section $parts $at }
@@ -527,6 +629,7 @@ function Read-AwTomlValue {
     $inv = [System.Globalization.CultureInfo]::InvariantCulture
     $stack = $null
     $p = $s.P
+    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
     $s.Steps++
     if ($s.Steps -gt $maxSteps) { throw (New-AwTomlBudgetError $s $p) }
     while ($true) {
@@ -544,7 +647,10 @@ function Read-AwTomlValue {
             $p++
             if ($c -eq '[') {
                 [void]$stack.Add(@{ IsArray = $true; Depth = $d; List = [System.Collections.ArrayList]::new() })
-                $p += $rxTrivia.Match($T, $p).Length
+                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                $mw = $rxTrivia.Match($W, $p - $wb)
+                if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxTrivia $p }
+                $p += $mw.Length
                 if ($T[$p] -eq ']') {
                     $p++
                     $stack.RemoveAt($stack.Count - 1)
@@ -558,7 +664,10 @@ function Read-AwTomlValue {
                 $map = [System.Collections.Hashtable]::new([System.StringComparer]::Ordinal)
                 $frame = @{ IsArray = $false; Depth = $d; Map = $map; Section = $s.Section; Target = $null; Stem = $null; TargetDepth = $d }
                 [void]$stack.Add($frame)
-                $p += $rxWs.Match($T, $p).Length
+                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                $mw = $rxWs.Match($W, $p - $wb)
+                if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $p }
+                $p += $mw.Length
                 if ($T[$p] -eq '}') {
                     $p++
                     $stack.RemoveAt($stack.Count - 1)
@@ -568,6 +677,7 @@ function Read-AwTomlValue {
                     $s.P = $p
                     Read-AwTomlInlineKey $s $frame
                     $p = $s.P
+                    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
                     $complete = $false
                 }
             }
@@ -575,28 +685,43 @@ function Read-AwTomlValue {
             $value = $null
             $done = $false
             if ($c -eq '"') {
-                # Fast path: a basic string without escapes.
+                # Fast path: a basic string without escapes. Otherwise Read-AwTomlString takes its match.
                 if (-not ($T[$p + 1] -eq '"' -and $T[$p + 2] -eq '"')) {
-                    $m = $script:AwTomlRxBasic.Match($T, $p + 1)
+                    $sp = $p + 1
+                    if ($s.BasicAt -eq $sp) { $m = $s.BasicMatch }
+                    else {
+                        if ($sp -lt $wb -or $sp -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $sp }
+                        $m = $script:AwTomlRxBasic.Match($W, $sp - $wb)
+                        if ($sp + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxBasic $sp }
+                    }
                     $e = $p + 1 + $m.Length
                     if ($T[$e] -eq '"' -and $m.Value.IndexOf([char]'\') -lt 0) { $value = $m.Value; $p = $e + 1; $done = $true }
+                    else { $s.BasicAt = $sp; $s.BasicMatch = $m }
                 }
             } elseif ($c -eq "'") {
                 # Fast path: a literal string.
                 if (-not ($T[$p + 1] -eq "'" -and $T[$p + 2] -eq "'")) {
-                    $m = $script:AwTomlRxLiteral.Match($T, $p + 1)
+                    $sp = $p + 1
+                    if ($sp -lt $wb -or $sp -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $sp }
+                    $m = $script:AwTomlRxLiteral.Match($W, $sp - $wb)
+                    if ($sp + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxLiteral $sp }
                     $e = $p + 1 + $m.Length
                     if ($T[$e] -eq "'") { $value = $m.Value; $p = $e + 1; $done = $true }
                 }
             } else {
-                $m = $script:AwTomlRxToken.Match($T, $p)
+                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                $m = $script:AwTomlRxToken.Match($W, $p - $wb)
+                if ($p + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxToken $p }
                 if ($m.Length -eq 0) { throw (New-AwTomlError $T $p ('Expected a value, found ' + (Format-AwTomlFound $s $p))) }
                 $tok = $m.Value
                 $at = $p
                 $p += $m.Length
                 # A date and a time separated by a space form one date-time.
-                if ($tok.Length -eq 10 -and $tok[4] -eq '-' -and $script:AwTomlRxSpaceDigit.Match($T, $p).Success) {
-                    $m = $script:AwTomlRxToken.Match($T, $p + 1)
+                if ($tok.Length -eq 10 -and $tok[4] -eq '-' -and $T[$p] -eq ' ' -and [int]$T[$p + 1] -ge 48 -and [int]$T[$p + 1] -le 57) {
+                    $sp = $p + 1
+                    if ($sp -lt $wb -or $sp -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $sp }
+                    $m = $script:AwTomlRxToken.Match($W, $sp - $wb)
+                    if ($sp + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $script:AwTomlRxToken $sp }
                     $tok = $tok + ' ' + $m.Value
                     $p += 1 + $m.Length
                 }
@@ -610,6 +735,7 @@ function Read-AwTomlValue {
                 $s.P = $p
                 $value = Read-AwTomlString $s $true
                 $p = $s.P
+                $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
             }
         }
 
@@ -625,11 +751,17 @@ function Read-AwTomlValue {
             if ($s.Steps -gt $maxSteps) { throw (New-AwTomlBudgetError $s $p) }
             if ($top.IsArray) {
                 [void]$top.List.Add($value)
-                $p += $rxTrivia.Match($T, $p).Length
+                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                $mw = $rxTrivia.Match($W, $p - $wb)
+                if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxTrivia $p }
+                $p += $mw.Length
                 $c = $T[$p]
                 if ($c -eq ',') {
                     $p++
-                    $p += $rxTrivia.Match($T, $p).Length
+                    if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                    $mw = $rxTrivia.Match($W, $p - $wb)
+                    if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxTrivia $p }
+                    $p += $mw.Length
                     if ($T[$p] -ne ']') { break }
                     $c = ']'
                 }
@@ -642,13 +774,20 @@ function Read-AwTomlValue {
                 throw (New-AwTomlError $T $p ("Expected ',' or ']' after an array element, found " + (Format-AwTomlFound $s $p)))
             }
             $top.Target[$top.Stem] = $value
-            $p += $rxWs.Match($T, $p).Length
+            if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+            $mw = $rxWs.Match($W, $p - $wb)
+            if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $p }
+            $p += $mw.Length
             $c = $T[$p]
             if ($c -eq ',') {
                 $p++
-                $s.P = $p + $rxWs.Match($T, $p).Length
+                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                $mw = $rxWs.Match($W, $p - $wb)
+                if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $p }
+                $s.P = $p + $mw.Length
                 Read-AwTomlInlineKey $s $top
                 $p = $s.P
+                $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
                 break
             }
             if ($c -eq '}') {
@@ -706,9 +845,15 @@ function ConvertFrom-AwToml {
     # 'frozen' (inline table) or 'd<section>' (by dotted keys in that section).
     $kinds = [System.Collections.Generic.Dictionary[object,string]]::new()
     $kinds[$root] = 'defined'
+    # A fast path that stops leaves what it read for the reader that takes over, so a long string or
+    # run of spaces past a window edge is matched once: the basic string body at BasicAt, or the bare
+    # first key part at KeyAt with the position after its spaces. The text never changes during a
+    # parse, so what was read at a position stays true.
     $s = @{
         T = $T; End = $Text.Length; P = $start; Root = $root; Kinds = $kinds
         Arrays = [System.Collections.ArrayList]::new(); Section = 0; Depth = 0; Steps = 0; KeyParts = $null
+        W = ''; Wb = 0; Wl = -1
+        BasicAt = -1; BasicMatch = $null; KeyAt = -1; KeyHead = ''; KeyNext = 0
     }
     $rxTrivia = $script:AwTomlRxTrivia
     $rxWs = $script:AwTomlRxWs
@@ -726,8 +871,12 @@ function ConvertFrom-AwToml {
     $currentParts = $null
     $n = $T.Length
     $p = $start
+    $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
     while ($true) {
-        $p += $rxTrivia.Match($T, $p).Length
+        if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+        $mw = $rxTrivia.Match($W, $p - $wb)
+        if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxTrivia $p }
+        $p += $mw.Length
         if ($p -ge $n) { break }
         $at = $p
         $code = [int]$T[$p]
@@ -741,19 +890,29 @@ function ConvertFrom-AwToml {
             # [table] or [[array of tables]]; a single bare key skips the general key reader.
             $isArray = ($T[$p + 1] -eq '[')
             if ($isArray) { $p += 2 } else { $p++ }
-            $p += $rxWs.Match($T, $p).Length
+            if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+            $mw = $rxWs.Match($W, $p - $wb)
+            if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $p }
+            $p += $mw.Length
             $parts = $null
-            $m = $rxBare.Match($T, $p)
+            if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+            $m = $rxBare.Match($W, $p - $wb)
+            if ($p + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rxBare $p }
             if ($m.Length -gt 0) {
                 $q = $p + $m.Length
-                $q += $rxWs.Match($T, $q).Length
+                if ($q -lt $wb -or $q -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $q }
+                $mw = $rxWs.Match($W, $q - $wb)
+                if ($q + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $q }
+                $q += $mw.Length
                 if ($T[$q] -eq ']') { $parts = [string[]]@($m.Value); $p = $q }
+                else { $s.KeyAt = $p; $s.KeyHead = $m.Value; $s.KeyNext = $q }
             }
             if ($null -eq $parts) {
                 $s.P = $p
                 Read-AwTomlKey $s
                 $parts = $s.KeyParts
                 $p = $s.P
+                $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
             }
             if ($isArray) {
                 if ($T[$p] -ne ']' -or $T[$p + 1] -ne ']') {
@@ -774,24 +933,34 @@ function ConvertFrom-AwToml {
             # key = value; a single bare key skips the general key reader.
             $parts = $null
             $key = $null
-            $m = $rxBare.Match($T, $p)
+            if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+            $m = $rxBare.Match($W, $p - $wb)
+            if ($p + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rxBare $p }
             if ($m.Length -gt 0) {
                 $q = $p + $m.Length
-                $q += $rxWs.Match($T, $q).Length
+                if ($q -lt $wb -or $q -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $q }
+                $mw = $rxWs.Match($W, $q - $wb)
+                if ($q + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $q }
+                $q += $mw.Length
                 if ($T[$q] -eq '=') { $key = $m.Value; $p = $q }
+                else { $s.KeyAt = $p; $s.KeyHead = $m.Value; $s.KeyNext = $q }
             }
             if ($null -eq $key) {
                 $s.P = $p
                 Read-AwTomlKey $s
                 $parts = $s.KeyParts
                 $p = $s.P
+                $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
                 if ($T[$p] -ne '=') {
                     throw (New-AwTomlError $T $p ("Expected '=' after the key '" + (Format-AwTomlKey $parts) + "', found " + (Format-AwTomlFound $s $p)))
                 }
                 $key = $parts[$parts.Count - 1]
             }
             $p++
-            $p += $rxWs.Match($T, $p).Length
+            if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+            $mw = $rxWs.Match($W, $p - $wb)
+            if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxWs $p }
+            $p += $mw.Length
             $target = $current
             $targetDepth = $currentDepth
             if ($null -ne $parts -and $parts.Count -gt 1) {
@@ -810,18 +979,27 @@ function ConvertFrom-AwToml {
             $c = $T[$p]
             if ($c -eq '"') {
                 if (-not ($T[$p + 1] -eq '"' -and $T[$p + 2] -eq '"')) {
-                    $m = $rxBasic.Match($T, $p + 1)
+                    $sp = $p + 1
+                    if ($sp -lt $wb -or $sp -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $sp }
+                    $m = $rxBasic.Match($W, $sp - $wb)
+                    if ($sp + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rxBasic $sp }
                     $e = $p + 1 + $m.Length
                     if ($T[$e] -eq '"' -and $m.Value.IndexOf([char]'\') -lt 0) { $value = $m.Value; $p = $e + 1; $done = $true }
+                    else { $s.BasicAt = $sp; $s.BasicMatch = $m }
                 }
             } elseif ($c -eq "'") {
                 if (-not ($T[$p + 1] -eq "'" -and $T[$p + 2] -eq "'")) {
-                    $m = $rxLiteral.Match($T, $p + 1)
+                    $sp = $p + 1
+                    if ($sp -lt $wb -or $sp -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $sp }
+                    $m = $rxLiteral.Match($W, $sp - $wb)
+                    if ($sp + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rxLiteral $sp }
                     $e = $p + 1 + $m.Length
                     if ($T[$e] -eq "'") { $value = $m.Value; $p = $e + 1; $done = $true }
                 }
             } elseif ($c -ne '[' -and $c -ne '{') {
-                $m = $rxToken.Match($T, $p)
+                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                $m = $rxToken.Match($W, $p - $wb)
+                if ($p + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rxToken $p }
                 # A 10-character token followed by a space may be the date of a date-time.
                 if ($m.Length -gt 0 -and -not ($m.Length -eq 10 -and $T[$p + 10] -eq ' ')) {
                     $tok = $m.Value
@@ -837,11 +1015,15 @@ function ConvertFrom-AwToml {
                 $s.P = $p
                 $value = Read-AwTomlValue $s $targetDepth
                 $p = $s.P
+                $W = $s.W; $wb = $s.Wb; $wl = $s.Wl
             }
             $target[$key] = $value
         }
         # The statement must end the line; a comment may follow it.
-        $p += $rxLineEnd.Match($T, $p).Length
+        if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+        $mw = $rxLineEnd.Match($W, $p - $wb)
+        if ($p + $mw.Length -gt $wl) { $mw, $W, $wb, $wl = Find-AwTomlMatch $s $rxLineEnd $p }
+        $p += $mw.Length
         $c = $T[$p]
         if ($c -eq "`n") { $p++ }
         elseif ($c -eq "`r" -and $T[$p + 1] -eq "`n") { $p += 2 }

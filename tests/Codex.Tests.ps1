@@ -579,6 +579,45 @@ try {
             Assert-Equal 0 $f.Count
             Assert-True ($ms -lt 2000) "rules scan took $ms ms"
         }
+        It 'finds a call after any run of blanks before the parenthesis' {
+            # The blanks are skipped 256 characters at a time: runs that end on each side of a
+            # slice end, spaces and tabs mixed. The pattern is read within 4096 characters only.
+            $problems = New-Object System.Collections.Generic.List[string]
+            foreach ($n in @(0, 1, 255, 256, 257, 511, 512, 513, 600, 100000)) {
+                $text = "x = 1`nprefix_rule" + (" `t" * $n).Substring(0, $n) + '(pattern = ["git"])' + "`n"
+                $expected = if (11 + $n + 19 -le 4096) { '"git"' } else { '?' }
+                $r = @(& $aw { param($t) @(Get-AwCdxAllowRules $t) } $text)
+                $got = @($r | ForEach-Object { '{0}:{1}:{2}' -f $_.Index, $_.Pattern, $_.Explicit }) -join ', '
+                if ($got -cne ('6:' + $expected + ':False')) { $problems.Add("$n blanks gave '$got'") }
+            }
+            # Blanks up to the end of the file, or before another character, are no call.
+            $others = [ordered]@{
+                'blanks to the end'     = 'prefix_rule' + (' ' * 256)
+                'blanks, then a letter' = 'prefix_rule' + (' ' * 256) + 'x(pattern = ["git"])'
+                'blanks, then a line'   = 'prefix_rule' + (' ' * 512) + "`n(pattern = [`"git`"])"
+            }
+            foreach ($name in $others.Keys) {
+                $r = @(& $aw { param($t) @(Get-AwCdxAllowRules $t) } $others[$name])
+                if ($r.Count -ne 0) { $problems.Add("$name gave $($r.Count) calls") }
+            }
+            Assert-Equal @() $problems.ToArray() 'cases that differ'
+            $blank = "x = 1`nprefix_rule" + (' ' * 600) + '(pattern = ["git"])' + "`n"
+            $f = @(Invoke-CdxRule 'AW-CDX-013' -ProjectFiles @{ '.codex\rules\default.rules' = $blank })
+            Assert-Equal @('prefix_rule pattern ["git"], no decision (allow by default): matching commands run outside the sandbox without a prompt') (Get-Evidence $f)
+            Assert-Equal 2 $f[0].Location.Line
+        }
+        It 'stays fast on a 2 MB rules file whose decoys are each followed by 300 blanks' {
+            $text = 'prefix_rule' + (' ' * 300) + '(pattern = ["git"])' + "`n" + (('prefix_rule' + (' ' * 300)) * 6600)
+            Assert-True ($text.Length -lt 2MB) 'the file stays within the size limit'
+            $ctx = Get-CdxContext (New-CdxCase -ProjectFiles @{ '.codex\rules\blanks.rules' = $text })
+            Assert-Equal @($text.Length) @($ctx.CodexRules | ForEach-Object { $_.Raw.Length })
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $f = @(Invoke-CdxCheck 'AW-CDX-013' $ctx)
+            $ms = $sw.ElapsedMilliseconds
+            Assert-Equal @('prefix_rule pattern ["git"], no decision (allow by default): matching commands run outside the sandbox without a prompt') (Get-Evidence $f)
+            Assert-Equal 1 $f[0].Location.Line
+            Assert-True ($ms -lt 2000) "rules scan took $ms ms"
+        }
     }
 
     Describe 'AW-CDX-014 profiles that weaken the defaults' {
@@ -1131,15 +1170,23 @@ try {
                 'unterminated literal' = "a = '" + ('y' * 1900000)
                 'many keys'            = ((@(1..60000) | ForEach-Object { 'k' + $_ + ' = 1' }) -join "`n")
             }
+            # Every case runs: the slow or failing ones are listed together at the end.
+            $problems = New-Object System.Collections.Generic.List[string]
             foreach ($name in $cases.Keys) {
-                $case = New-CdxCase -Project $cases[$name]
-                $sw = [System.Diagnostics.Stopwatch]::StartNew()
-                $ctx = Get-CdxContext $case
-                $ms = $sw.ElapsedMilliseconds
-                Assert-Equal 1 @($ctx.Errors | Where-Object { $_.RuleId -eq 'AW-CORE-001' -and $_.Harness -eq 'codex' }).Count $name
-                Assert-Equal $null $ctx.Codex[0].Data $name
-                Assert-True ($ms -lt 2000) "$name took $ms ms"
+                try {
+                    $case = New-CdxCase -Project $cases[$name]
+                    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                    $ctx = Get-CdxContext $case
+                    $ms = $sw.ElapsedMilliseconds
+                    $count = @($ctx.Errors | Where-Object { $_.RuleId -eq 'AW-CORE-001' -and $_.Harness -eq 'codex' }).Count
+                    if ($count -ne 1) { $problems.Add("$name gave $count AW-CORE-001 findings") }
+                    if ($null -ne $ctx.Codex[0].Data) { $problems.Add("$name was parsed") }
+                    if ($ms -ge 2000) { $problems.Add("$name took $ms ms") }
+                } catch {
+                    $problems.Add("$name failed: " + $_.Exception.Message)
+                }
             }
+            Assert-Equal @() $problems.ToArray() 'slow or failing cases'
         }
         It 'reports 2 MB lines, huge arrays, escape floods, unterminated strings and stray CRs as AW-CORE-001 in under 2 seconds' {
             $n = 2MB - 64
@@ -1163,18 +1210,26 @@ try {
                 'bare CR in a comment'                       = "a = 1`r`n# note`r more`r`n"
                 'bare CR at the end of a CRLF document'      = "a = 1`r`n" + ("# c`r`n" * 100000) + "`r"
             }
+            # Every case runs: the slow or failing ones are listed together at the end.
+            $problems = New-Object System.Collections.Generic.List[string]
             foreach ($name in $cases.Keys) {
-                Assert-True ($cases[$name].Length -le $n + 64) "$name stays within the size limit"
-                $case = New-CdxCase -Project $cases[$name]
-                $sw = [System.Diagnostics.Stopwatch]::StartNew()
-                $ctx = Get-CdxContext $case
-                $ms = $sw.ElapsedMilliseconds
-                $seen = $name + ': ' + (@($ctx.Errors | ForEach-Object { $_.Evidence }) -join '; ')
-                Assert-Equal 1 @($ctx.Errors | Where-Object { $_.RuleId -eq 'AW-CORE-001' -and $_.Harness -eq 'codex' }).Count $seen
-                Assert-Match $ctx.Errors[0].Evidence '^Invalid TOML at line [0-9]+' $seen
-                Assert-Equal $null $ctx.Codex[0].Data $name
-                Assert-True ($ms -lt 2000) "$name took $ms ms"
+                try {
+                    if ($cases[$name].Length -gt $n + 64) { $problems.Add("$name is larger than the size limit"); continue }
+                    $case = New-CdxCase -Project $cases[$name]
+                    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                    $ctx = Get-CdxContext $case
+                    $ms = $sw.ElapsedMilliseconds
+                    $seen = $name + ': ' + (@($ctx.Errors | ForEach-Object { $_.Evidence }) -join '; ')
+                    $count = @($ctx.Errors | Where-Object { $_.RuleId -eq 'AW-CORE-001' -and $_.Harness -eq 'codex' }).Count
+                    if ($count -ne 1) { $problems.Add("$count AW-CORE-001 findings for $seen") }
+                    elseif ($ctx.Errors[0].Evidence -notmatch '^Invalid TOML at line [0-9]+') { $problems.Add("unexpected evidence for $seen") }
+                    if ($null -ne $ctx.Codex[0].Data) { $problems.Add("$name was parsed") }
+                    if ($ms -ge 2000) { $problems.Add("$name took $ms ms") }
+                } catch {
+                    $problems.Add("$name failed: " + $_.Exception.Message)
+                }
             }
+            Assert-Equal @() $problems.ToArray() 'slow or failing cases'
         }
         It 'keeps line lookups linear and lists at most 20 findings per file and kind on hostile entries' {
             # Keys padded with spaces trim to '~' after a long run of spaces: a key search for each

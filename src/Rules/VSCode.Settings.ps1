@@ -150,9 +150,17 @@ function Join-AwVscQuoted {
 # --- Locating settings in files -------------------------------------------------------------
 
 function Get-AwVscLineAt {
+    # 1-based line of Index in Text, counted on 16K-character chunks as in Get-AwCdxLineAt. It runs once
+    # per located finding: a regex over the whole prefix built one Match per line, and PowerShell 7.3+
+    # logs every .NET method call made from script with the full text of its string arguments.
     param([string]$Text, [int]$Index)
     if ($Index -le 0) { return 1 }
-    return ([regex]::Matches($Text.Substring(0, $Index), "`n")).Count + 1
+    $line = 1
+    for ($at = 0; $at -lt $Index; $at += 16384) {
+        $chunk = $Text.Substring($at, [Math]::Min(16384, $Index - $at))
+        $line += $chunk.Length - $chunk.Replace("`n", '').Length
+    }
+    return $line
 }
 
 function Find-AwVscSettingIndex {
@@ -174,7 +182,8 @@ function Find-AwVscSettingIndex {
 function Find-AwVscLine {
     # Best-effort 1-based line of a setting (and of one of its entries), or $null.
     param([string]$Text, [string]$Key, [string]$EntryKey)
-    if ([string]::IsNullOrEmpty($Text)) { return $null }
+    # $Text.Length, not IsNullOrEmpty($Text): this runs once per finding on a whole settings file.
+    if ($Text.Length -eq 0) { return $null }
     $i = Find-AwVscSettingIndex -Text $Text -Key $Key
     if ($EntryKey) {
         $needle = '"' + $EntryKey.Replace('\', '\\').Replace('"', '\"') + '"'

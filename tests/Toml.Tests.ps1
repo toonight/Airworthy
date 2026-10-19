@@ -27,16 +27,169 @@ function Get-TestTomlError {
 }
 
 function Measure-TestToml {
-    # Parses Text; returns the elapsed seconds and the error message ('' when it parsed).
+    # Parses Text; returns the elapsed seconds, the value and the error message ('' when it parsed).
     param([string]$Text)
     $message = ''
+    $value = $null
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    try { $null = ConvertFrom-TestToml $Text } catch { $message = $_.Exception.Message }
+    try { $value = ConvertFrom-TestToml $Text } catch { $message = $_.Exception.Message }
     $sw.Stop()
-    return [pscustomobject]@{ Seconds = $sw.Elapsed.TotalSeconds; Message = $message }
+    Write-Host ('AW-TIME-TEMP {0:N3}' -f $sw.Elapsed.TotalSeconds)
+    return [pscustomobject]@{ Seconds = $sw.Elapsed.TotalSeconds; Value = $value; Message = $message }
+}
+
+function Measure-TestHostileToml {
+    # Measure-TestToml on a text within the size limit; asserts that the parse took under 2 seconds.
+    param([string]$Text)
+    Assert-True ($Text.Length -le $mb2) 'the input stays within the size limit'
+    $r = Measure-TestToml $Text
+    Assert-True ($r.Seconds -lt 2) ("took {0:N2} s" -f $r.Seconds)
+    return $r
 }
 
 function Join-TestLines([string[]]$Lines) { return ($Lines -join "`n") }
+
+function New-TestTomlKeys {
+    # Count lines 'k<i> = <Value>', joined by Newline (no newline after the last one).
+    param([int]$Count, [string]$Value, [string]$Newline = "`n")
+    $lines = foreach ($i in 0..($Count - 1)) { 'k' + $i + ' = ' + $Value }
+    return ($lines -join $Newline)
+}
+
+function Set-TestTomlWindow {
+    # Sets the window size and margin of the parser; returns the previous pair.
+    param([int]$Size, [int]$Margin)
+    return (& $aw {
+        param($size, $margin)
+        $old = @($script:AwTomlWindow, $script:AwTomlWindowMargin)
+        $script:AwTomlWindow = $size
+        $script:AwTomlWindowMargin = $margin
+        return ,$old
+    } $Size $Margin)
+}
+
+function Format-TestTomlValue {
+    # Exact text of a parsed value: types, ordinal key order, string lengths and double bits.
+    param($Value)
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [hashtable]) {
+        $keys = [string[]]@($Value.Keys)
+        [System.Array]::Sort($keys, [System.StringComparer]::Ordinal)
+        $parts = foreach ($k in $keys) { [string]$k.Length + ':' + $k + '=' + (Format-TestTomlValue $Value[$k]) }
+        return '{' + ($parts -join ',') + '}'
+    }
+    if ($Value -is [object[]]) {
+        $parts = foreach ($v in $Value) { Format-TestTomlValue $v }
+        return '[' + ($parts -join ',') + ']'
+    }
+    if ($Value -is [double]) { return 'double:' + [System.BitConverter]::DoubleToInt64Bits($Value) }
+    if ($Value -is [string]) { return 'string:' + $Value.Length + ':' + $Value }
+    return $Value.GetType().Name + ':' + $Value
+}
+
+function Get-TestTomlOutcome {
+    # The exact result of parsing Text: the value, or the exception type, line, column and message.
+    param([string]$Text)
+    try { $r = ConvertFrom-TestToml $Text } catch {
+        $ex = $_.Exception
+        while ($ex -isnot [System.FormatException] -and $null -ne $ex.InnerException) { $ex = $ex.InnerException }
+        return ('error ' + $ex.GetType().Name + ' ' + $ex.Data['Line'] + ':' + $ex.Data['Column'] + ' ' + $ex.Message)
+    }
+    return (Format-TestTomlValue $r)
+}
+
+function Get-TestTomlOutcomes {
+    # Outcome of each text with the given window size and margin; the previous ones are restored.
+    param($Texts, [int]$Size, [int]$Margin)
+    $old = Set-TestTomlWindow $Size $Margin
+    try {
+        $out = New-Object System.Collections.Generic.List[string]
+        foreach ($t in $Texts) { $out.Add((Get-TestTomlOutcome $t)) }
+        return ,$out.ToArray()
+    } finally {
+        $null = Set-TestTomlWindow $old[0] $old[1]
+    }
+}
+
+function Compare-TestTomlOutcomes {
+    # Asserts that two outcome lists are equal; the message names the first differences.
+    param($Texts, $Expected, $Actual, [string]$What)
+    $diff = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $Expected.Count; $i++) {
+        if (-not [string]::Equals($Expected[$i], $Actual[$i], [System.StringComparison]::Ordinal)) {
+            $diff.Add("text $i <$($Texts[$i])>: expected <$($Expected[$i])>, got <$($Actual[$i])>")
+        }
+    }
+    Assert-Equal 0 $diff.Count ($What + ': ' + (@($diff | Select-Object -First 3) -join ' | '))
+}
+
+function New-TestTomlFuzz {
+    # Seeded TOML-like documents: statements, headers, comments and junk, built from fragments
+    # whose tokens end near the edges of small windows. Many are invalid somewhere.
+    param([int]$Seed, [int]$Count)
+    $rng = New-Object System.Random -ArgumentList $Seed
+    $keys = @('a', 'b', 'k_1', 'key-2', '"q k"', "'lit'", 'a.b', 'a . b', '"a"."b"', 'x. y .z', '1234', '3.14',
+        '"\u0041"', '""', 'a+b', 'a:b', '"a\tb"')
+    $values = @('1', '-0', '+17', '0x1F', '0o7', '0b1', '1_000', '1e5', '3.14', '-inf', 'nan', 'true', 'false',
+        '1979-05-27', '1979-05-27 07:32:00', '1979-05-27T07:32:00Z', '07:32:00', '1979-05-27  07:32:00', '1979-05-27 x',
+        '"x"', '"a\"b\\c"', '"\u0041\n"', '"\x"', "'C:\x'", '"""m"""', '"""a""b"""""', "'''l'''", "'''x''''",
+        ('"""\' + "`n" + '  y"""'), ("'''" + "`r`n" + "z'''"), '[]', '[1, 2]', ('[ 1, # c' + "`n" + ' 2, ]'), '{}',
+        '{ a = 1, b.c = "x" }', '[ { a = 1 }, [ "z" ] ]', '{ a = 1 # c }', '[[1],[2,],]')
+    $junk = @('=', '"', '"""', "'", "'''", '\', "`r", "`n", "`r`n", '#', '[', ']', '[[', ']]', '{', '}', ',', '.', ' ',
+        "`t", 'x', '\u12', '1979-05-27', $ctl['nul'], $ctl['bell'], $ctl['esc'], $ctl['del'], $ctl['lineSeparator'])
+    $all = @($keys + $values + $junk)
+    $docs = New-Object System.Collections.Generic.List[string]
+    for ($d = 0; $d -lt $Count; $d++) {
+        $sb = New-Object System.Text.StringBuilder
+        $lines = $rng.Next(1, 7)
+        for ($l = 0; $l -lt $lines; $l++) {
+            $kind = $rng.Next(10)
+            if ($kind -lt 5) {
+                $key = $keys[$rng.Next($keys.Count)]
+                if ($rng.Next(4) -eq 0) { $key = 'k' * $rng.Next(1, 40) }
+                $value = $values[$rng.Next($values.Count)]
+                if ($rng.Next(4) -eq 0) { $value = '"' + ('x' * $rng.Next(0, 40)) + '"' }
+                [void]$sb.Append($key + (' ' * $rng.Next(0, 3)) + '=' + (' ' * $rng.Next(0, 20)) + $value)
+                if ($rng.Next(3) -eq 0) { [void]$sb.Append(' # ' + ('c' * $rng.Next(0, 30))) }
+            } elseif ($kind -eq 5) {
+                $key = $keys[$rng.Next($keys.Count)]
+                if ($rng.Next(2) -eq 0) { [void]$sb.Append('[' + $key + ']') } else { [void]$sb.Append('[[' + $key + ']]') }
+            } elseif ($kind -eq 6) {
+                [void]$sb.Append((' ' * $rng.Next(0, 20)) + '#' + ('c' * $rng.Next(0, 40)))
+            } else {
+                $n = $rng.Next(1, 7)
+                for ($j = 0; $j -lt $n; $j++) { [void]$sb.Append($all[$rng.Next($all.Count)]) }
+            }
+            # Sometimes a stray fragment lands anywhere in the document.
+            if ($rng.Next(8) -eq 0) { [void]$sb.Insert($rng.Next(0, $sb.Length + 1), $junk[$rng.Next($junk.Count)]) }
+            if ($rng.Next(4) -eq 0) { [void]$sb.Append("`r`n") } else { [void]$sb.Append("`n") }
+        }
+        $docs.Add($sb.ToString())
+    }
+    return ,$docs.ToArray()
+}
+
+function Test-TestTomlDocumentRef {
+    # True when an AST node is the TOML document ($T, $Text or $s.T) used as a value, rather than as
+    # the target of a member access or of an index.
+    param($Node)
+    $isDoc = $false
+    if ($Node -is [System.Management.Automation.Language.VariableExpressionAst]) {
+        $name = $Node.VariablePath.UserPath
+        $isDoc = ($name -ceq 'T' -or $name -ceq 'Text')
+    } elseif ($Node -is [System.Management.Automation.Language.MemberExpressionAst] -and
+        $Node -isnot [System.Management.Automation.Language.InvokeMemberExpressionAst]) {
+        $isDoc = ($Node.Expression -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $Node.Expression.VariablePath.UserPath -ceq 's' -and $Node.Member.Extent.Text -ceq 'T')
+    }
+    if (-not $isDoc) { return $false }
+    $parent = $Node.Parent
+    if ($parent -is [System.Management.Automation.Language.MemberExpressionAst] -and [object]::ReferenceEquals($parent.Expression, $Node)) { return $false }
+    if ($parent -is [System.Management.Automation.Language.IndexExpressionAst] -and [object]::ReferenceEquals($parent.Target, $Node)) { return $false }
+    return $true
+}
+
+$tomlPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\Core\Toml.ps1'
 
 Describe 'ConvertFrom-AwToml: the toml.io example' {
     It 'parses it into the same structure as its JSON equivalent' {
@@ -305,128 +458,130 @@ Describe 'ConvertFrom-AwToml: documents, comments and line endings' {
     }
 }
 
+# Invalid documents; the bounded-window tests below parse them again at small window sizes.
+$invalidCases = @(
+    @{ Name = 'duplicate key';                      Text = "a = 1`na = 2";                                   Pattern = "Duplicate key 'a'" }
+    @{ Name = 'same bare and quoted key (spec)';    Text = "spelling = `"a`"`n`"spelling`" = `"b`"";         Pattern = "Duplicate key 'spelling'" }
+    @{ Name = 'duplicate key in a table';           Text = "[t]`na = 1`na = 2";                              Pattern = "Duplicate key 'a' in table \[t\]" }
+    @{ Name = 'duplicate dotted key';               Text = "a.b = 1`na.b = 2";                               Pattern = "Duplicate key 'a\.b'" }
+    @{ Name = 'duplicate key in an inline table';   Text = 'a = { b = 1, b = 2 }';                           Pattern = "Duplicate key 'b' in an inline table" }
+    @{ Name = 'table defined twice';                Text = "[fruit]`napple = 1`n[fruit]`norange = 2";        Pattern = 'Table \[fruit\] is defined more than once' }
+    @{ Name = 'table after dotted keys (spec)';     Text = "[fruit]`napple.color = `"red`"`n[fruit.apple]";  Pattern = 'Table \[fruit\.apple\] is already defined with dotted keys' }
+    @{ Name = 'super-table after dotted keys';      Text = "a.b = 1`n[a]";                                   Pattern = 'Table \[a\] is already defined with dotted keys' }
+    @{ Name = 'dotted keys into a header table';    Text = "[a.b.c]`nz = 9`n[a]`nb.c.t = 1";                 Pattern = "Cannot add keys to 'b\.c' with dotted keys" }
+    @{ Name = 'table over a value';                 Text = "a = 1`n[a]";                                     Pattern = 'Cannot define table \[a\]: the key already holds a value' }
+    @{ Name = 'header through a value';             Text = "a = 1`n[a.b]";                                   Pattern = "Cannot use 'a' as a table" }
+    @{ Name = 'dotted key through a value (spec)';  Text = "fruit.apple = 1`nfruit.apple.smooth = true";     Pattern = "Cannot use 'fruit\.apple' as a table" }
+    @{ Name = 'dotted key into an inline table (spec)'; Text = "[product]`ntype = { name = `"Nail`" }`ntype.edible = false"; Pattern = 'an inline table cannot be extended' }
+    @{ Name = 'header into an inline table';        Text = "a = {}`n[a.b]";                                  Pattern = "Cannot extend 'a': an inline table" }
+    @{ Name = 'header over an inline table';        Text = "a = { b = 1 }`n[a]";                             Pattern = 'already defined as an inline table' }
+    @{ Name = 'inline table over dotted keys (spec)'; Text = "[product]`ntype.name = `"Nail`"`ntype = { edible = false }"; Pattern = "Duplicate key 'type'" }
+    @{ Name = 'dotted key into a nested inline table'; Text = 'a = { b = { c = 1 }, b.d = 2 }';             Pattern = 'an inline table cannot be extended' }
+    @{ Name = 'array of tables over a static array (spec)'; Text = "fruits = []`n[[fruits]]";                Pattern = 'static array' }
+    @{ Name = 'array of tables over a table';       Text = "[a]`n[[a]]";                                     Pattern = "'a' is already a table" }
+    @{ Name = 'table over an array of tables';      Text = "[[a]]`n[a]";                                     Pattern = 'already defined as an array of tables' }
+    @{ Name = 'sub-table before its array (spec)';  Text = "[fruit.physical]`ncolor = `"red`"`n[[fruit]]";   Pattern = "'fruit' is already a table" }
+    @{ Name = 'dotted keys into an array of tables'; Text = "[[a.b]]`n[a]`nb.c = 1";                         Pattern = 'it is an array of tables' }
+    @{ Name = 'trailing comma in an inline table';  Text = 'a = { b = 1, }';                                 Pattern = 'trailing comma' }
+    @{ Name = 'newline inside an inline table';     Text = "a = { b = 1,`nc = 2 }";                          Pattern = 'stay on one line' }
+    @{ Name = 'newline after an opening brace';     Text = "a = {`n}";                                       Pattern = 'stay on one line' }
+    @{ Name = 'newline before a closing brace';     Text = "a = { b = 1`n}";                                 Pattern = 'stay on one line' }
+    @{ Name = 'comment inside an inline table';     Text = 'a = { b = 1 # c }';                              Pattern = 'stay on one line' }
+    @{ Name = 'missing comma in an inline table';   Text = 'a = { b = 1 c = 2 }';                            Pattern = "Expected ',' or '\}' in an inline table" }
+    @{ Name = 'unclosed inline table';              Text = 'a = { b = 1';                                    Pattern = 'end of the document' }
+    @{ Name = 'missing comma in an array';          Text = 'a = [1 2]';                                      Pattern = "Expected ',' or '\]' after an array element" }
+    @{ Name = 'leading comma in an array';          Text = 'a = [,1]';                                       Pattern = 'Expected a value' }
+    @{ Name = 'double comma in an array';           Text = 'a = [1,,2]';                                     Pattern = 'Expected a value' }
+    @{ Name = 'unclosed array';                     Text = 'a = [1, 2';                                      Pattern = 'end of the document' }
+    @{ Name = 'unterminated basic string';          Text = 'a = "abc';                                       Pattern = 'Unterminated string' }
+    @{ Name = 'basic string cut by a newline';      Text = "a = `"abc`nb = 1";                               Pattern = 'Unterminated string' }
+    @{ Name = 'unterminated literal string';        Text = "a = 'abc";                                       Pattern = 'Unterminated string' }
+    @{ Name = 'unterminated multi-line string';     Text = "a = `"`"`"abc`nb = 1";                           Pattern = 'Unterminated multi-line string' }
+    @{ Name = 'unterminated multi-line literal';    Text = "a = '''abc`nb = 1";                              Pattern = 'Unterminated multi-line string' }
+    @{ Name = 'backslash before the end of the input'; Text = 'a = """abc\';                                 Pattern = 'Unterminated multi-line string' }
+    @{ Name = 'six closing quotes';                 Text = 'a = """x""""""';                                 Pattern = 'Expected the end of the line' }
+    @{ Name = 'invalid escape';                     Text = 'a = "\x41"';                                     Pattern = "Invalid escape sequence '\\x'" }
+    @{ Name = 'escaped space';                      Text = 'a = "a\ b"';                                     Pattern = 'backslash followed by U\+0020' }
+    @{ Name = 'escaped space in a multi-line string'; Text = 'a = """a\ b"""';                               Pattern = 'backslash followed by U\+0020' }
+    @{ Name = 'escape in a quoted key';             Text = '"a\qb" = 1';                                     Pattern = "Invalid escape sequence '\\q'" }
+    @{ Name = 'short \u escape';                    Text = 'a = "\u12"';                                     Pattern = 'must be followed by 4 hexadecimal digits' }
+    @{ Name = 'short \U escape';                    Text = 'a = "\U0001F60"';                                Pattern = 'must be followed by 8 hexadecimal digits' }
+    @{ Name = 'surrogate \u escape';                Text = 'a = "\uD800"';                                   Pattern = 'not a Unicode scalar value' }
+    @{ Name = '\U escape above U+10FFFF';           Text = 'a = "\U00110000"';                               Pattern = 'not a Unicode scalar value' }
+    @{ Name = '\U escape with the sign bit';        Text = 'a = "\UFFFFFFFF"';                               Pattern = 'not a Unicode scalar value' }
+    @{ Name = 'multi-line string as a key';         Text = '"""a""" = 1';                                    Pattern = 'cannot be used as a key' }
+    @{ Name = 'multi-line literal as a key';        Text = "'''a''' = 1";                                    Pattern = 'cannot be used as a key' }
+    @{ Name = 'missing value';                      Text = 'a = ';                                           Pattern = 'Expected a value, found the end of the document' }
+    @{ Name = 'missing value before a comment (spec)'; Text = 'key = # INVALID';                             Pattern = 'Expected a value, found a comment' }
+    @{ Name = 'value on the next line (spec)';      Text = "key =`n`"value`"";                               Pattern = 'Expected a value, found the end of the line' }
+    @{ Name = 'missing equals sign';                Text = 'a 1';                                            Pattern = "Expected '=' after the key 'a'" }
+    @{ Name = 'key without a value';                Text = "a`nb = 1";                                       Pattern = "Expected '=' after the key 'a', found the end of the line" }
+    @{ Name = 'two pairs on one line (spec)';       Text = 'first = "Ada" last = "Example"';                 Pattern = 'Expected the end of the line' }
+    @{ Name = 'text after a header';                Text = '[a] b = 1';                                      Pattern = 'Expected the end of the line' }
+    @{ Name = 'empty bare key (spec)';              Text = '= "no key name"';                                Pattern = 'Expected a key' }
+    @{ Name = 'empty dotted part';                  Text = 'a..b = 1';                                       Pattern = 'Expected a key' }
+    @{ Name = 'leading dot';                        Text = '.a = 1';                                         Pattern = 'Expected a key' }
+    @{ Name = 'trailing dot';                       Text = 'a. = 1';                                         Pattern = 'Expected a key' }
+    @{ Name = 'empty header';                       Text = '[]';                                             Pattern = 'Expected a key' }
+    @{ Name = 'unclosed header';                    Text = '[a';                                             Pattern = "Expected '\]' to close the table header" }
+    @{ Name = 'unclosed array of tables header';    Text = '[[a]';                                           Pattern = "Expected '\]\]'" }
+    @{ Name = 'space between closing brackets';     Text = '[[a] ]';                                         Pattern = "Expected '\]\]'" }
+    @{ Name = 'space between opening brackets';     Text = '[ [a] ]';                                        Pattern = 'Expected a key' }
+    @{ Name = 'non-ASCII bare key';                 Text = ($ctl['eAcute'] + ' = 1');                        Pattern = 'Expected a key' }
+    @{ Name = 'capitalized boolean';                Text = 'a = True';                                       Pattern = 'Invalid value' }
+    @{ Name = 'unquoted string';                    Text = 'a = abc';                                        Pattern = 'Invalid value' }
+    @{ Name = 'leading zero';                       Text = 'a = 01';                                         Pattern = 'Invalid value' }
+    @{ Name = 'double underscore';                  Text = 'a = 1__2';                                       Pattern = 'Invalid value' }
+    @{ Name = 'leading underscore';                 Text = 'a = _1';                                         Pattern = 'Invalid value' }
+    @{ Name = 'trailing underscore';                Text = 'a = 1_';                                         Pattern = 'Invalid value' }
+    @{ Name = 'signed hexadecimal';                 Text = 'a = +0x1';                                       Pattern = 'Invalid value' }
+    @{ Name = 'uppercase prefix';                   Text = 'a = 0X1F';                                       Pattern = 'Invalid value' }
+    @{ Name = 'underscore after a prefix';          Text = 'a = 0x_1';                                       Pattern = 'Invalid value' }
+    @{ Name = 'octal digit 8';                      Text = 'a = 0o8';                                        Pattern = 'Invalid value' }
+    @{ Name = 'binary digit 2';                     Text = 'a = 0b2';                                        Pattern = 'Invalid value' }
+    @{ Name = 'float without an integer part (spec)'; Text = 'a = .7';                                       Pattern = 'Invalid value' }
+    @{ Name = 'float without a fraction (spec)';    Text = 'a = 7.';                                         Pattern = 'Invalid value' }
+    @{ Name = 'float with an empty fraction (spec)'; Text = 'a = 3.e+20';                                    Pattern = 'Invalid value' }
+    @{ Name = 'float with an empty exponent';       Text = 'a = 1e';                                         Pattern = 'Invalid value' }
+    @{ Name = 'float with a leading zero';          Text = 'a = 03.14';                                      Pattern = 'Invalid value' }
+    @{ Name = 'capitalized infinity';               Text = 'a = Inf';                                        Pattern = 'Invalid value' }
+    @{ Name = 'capitalized NaN';                    Text = 'a = NaN';                                        Pattern = 'Invalid value' }
+    @{ Name = 'integer above the 64-bit range';     Text = 'a = 9223372036854775808';                        Pattern = 'Integer out of range' }
+    @{ Name = 'integer below the 64-bit range';     Text = 'a = -9223372036854775809';                       Pattern = 'Integer out of range' }
+    @{ Name = 'hexadecimal above the range';        Text = 'a = 0x8000000000000000';                         Pattern = 'Integer out of range' }
+    @{ Name = 'octal above the range';              Text = 'a = 0o1000000000000000000000';                   Pattern = 'Integer out of range' }
+    @{ Name = 'binary above the range';             Text = ('a = 0b1' + ('0' * 63));                         Pattern = 'Integer out of range' }
+    @{ Name = 'float out of range';                 Text = 'a = 1e400';                                      Pattern = 'Float out of range' }
+    @{ Name = 'month 13';                           Text = 'a = 1979-13-01';                                 Pattern = 'Invalid date or time' }
+    @{ Name = 'February 30';                        Text = 'a = 1979-02-30';                                 Pattern = 'Invalid date or time' }
+    @{ Name = 'February 29 of a common year';       Text = 'a = 2023-02-29';                                 Pattern = 'Invalid date or time' }
+    @{ Name = 'February 29 of 1900';                Text = 'a = 1900-02-29';                                 Pattern = 'Invalid date or time' }
+    @{ Name = 'day 31 of April';                    Text = 'a = 1979-04-31';                                 Pattern = 'Invalid date or time' }
+    @{ Name = 'hour 24';                            Text = 'a = 1979-05-27T24:00:00';                        Pattern = 'Invalid date or time' }
+    @{ Name = 'minute 60';                          Text = 'a = 07:60:00';                                   Pattern = 'Invalid date or time' }
+    @{ Name = 'second 61';                          Text = 'a = 07:32:61';                                   Pattern = 'Invalid date or time' }
+    @{ Name = 'time without seconds';               Text = 'a = 07:32';                                      Pattern = 'Invalid date or time' }
+    @{ Name = 'offset hour 24';                     Text = 'a = 1979-05-27T07:32:00+24:00';                  Pattern = 'Invalid date or time' }
+    @{ Name = 'one-digit month';                    Text = 'a = 1979-5-27';                                  Pattern = 'Invalid date or time' }
+    @{ Name = 'offset on a local time';             Text = 'a = 07:32:00Z';                                  Pattern = 'Invalid date or time' }
+    @{ Name = 'empty fraction of a second';         Text = 'a = 07:32:00.';                                  Pattern = 'Invalid date or time' }
+    @{ Name = 'date followed by a number';          Text = 'a = 1979-05-27 123';                             Pattern = 'Invalid date or time' }
+    @{ Name = 'bare carriage return';               Text = "a = 1`rb = 2";                                   Pattern = 'carriage return without a line feed' }
+    @{ Name = 'carriage return at the end';         Text = "a = 1`r";                                        Pattern = 'Carriage return without a line feed' }
+    @{ Name = 'carriage return in a multi-line string'; Text = "a = `"`"`"x`ry`"`"`"";                       Pattern = 'Carriage return without a line feed in a multi-line string' }
+    @{ Name = 'carriage return in a comment';       Text = "# x`ry`na = 1";                                  Pattern = 'carriage return' }
+    @{ Name = 'control character in a basic string'; Text = ('a = "x' + $ctl['bell'] + 'y"');                Pattern = 'control character U\+0007' }
+    @{ Name = 'DEL in a basic string';              Text = ('a = "x' + $ctl['del'] + 'y"');                  Pattern = 'control character U\+007F' }
+    @{ Name = 'NUL in a literal string';            Text = ("a = 'x" + $ctl['nul'] + "y'");                  Pattern = 'control character U\+0000' }
+    @{ Name = 'ESC in a multi-line string';         Text = ('a = """x' + $ctl['esc'] + 'y"""');              Pattern = 'control character U\+001B' }
+    @{ Name = 'DEL in a multi-line literal';        Text = ("a = '''x" + $ctl['del'] + "y'''");              Pattern = 'control character U\+007F' }
+    @{ Name = 'control character after a backslash'; Text = ('a = "x\' + $ctl['bell'] + '"');                Pattern = 'control character U\+0007' }
+    @{ Name = 'control character in a comment';     Text = ('# x' + $ctl['bell'] + 'y');                     Pattern = 'control character U\+0007' }
+    @{ Name = 'DEL in a comment after a value';     Text = ('a = 1 # x' + $ctl['del']);                      Pattern = 'control character U\+007F' }
+)
+
 Describe 'ConvertFrom-AwToml: invalid documents' {
-    $cases = @(
-        @{ Name = 'duplicate key';                      Text = "a = 1`na = 2";                                   Pattern = "Duplicate key 'a'" }
-        @{ Name = 'same bare and quoted key (spec)';    Text = "spelling = `"a`"`n`"spelling`" = `"b`"";         Pattern = "Duplicate key 'spelling'" }
-        @{ Name = 'duplicate key in a table';           Text = "[t]`na = 1`na = 2";                              Pattern = "Duplicate key 'a' in table \[t\]" }
-        @{ Name = 'duplicate dotted key';               Text = "a.b = 1`na.b = 2";                               Pattern = "Duplicate key 'a\.b'" }
-        @{ Name = 'duplicate key in an inline table';   Text = 'a = { b = 1, b = 2 }';                           Pattern = "Duplicate key 'b' in an inline table" }
-        @{ Name = 'table defined twice';                Text = "[fruit]`napple = 1`n[fruit]`norange = 2";        Pattern = 'Table \[fruit\] is defined more than once' }
-        @{ Name = 'table after dotted keys (spec)';     Text = "[fruit]`napple.color = `"red`"`n[fruit.apple]";  Pattern = 'Table \[fruit\.apple\] is already defined with dotted keys' }
-        @{ Name = 'super-table after dotted keys';      Text = "a.b = 1`n[a]";                                   Pattern = 'Table \[a\] is already defined with dotted keys' }
-        @{ Name = 'dotted keys into a header table';    Text = "[a.b.c]`nz = 9`n[a]`nb.c.t = 1";                 Pattern = "Cannot add keys to 'b\.c' with dotted keys" }
-        @{ Name = 'table over a value';                 Text = "a = 1`n[a]";                                     Pattern = 'Cannot define table \[a\]: the key already holds a value' }
-        @{ Name = 'header through a value';             Text = "a = 1`n[a.b]";                                   Pattern = "Cannot use 'a' as a table" }
-        @{ Name = 'dotted key through a value (spec)';  Text = "fruit.apple = 1`nfruit.apple.smooth = true";     Pattern = "Cannot use 'fruit\.apple' as a table" }
-        @{ Name = 'dotted key into an inline table (spec)'; Text = "[product]`ntype = { name = `"Nail`" }`ntype.edible = false"; Pattern = 'an inline table cannot be extended' }
-        @{ Name = 'header into an inline table';        Text = "a = {}`n[a.b]";                                  Pattern = "Cannot extend 'a': an inline table" }
-        @{ Name = 'header over an inline table';        Text = "a = { b = 1 }`n[a]";                             Pattern = 'already defined as an inline table' }
-        @{ Name = 'inline table over dotted keys (spec)'; Text = "[product]`ntype.name = `"Nail`"`ntype = { edible = false }"; Pattern = "Duplicate key 'type'" }
-        @{ Name = 'dotted key into a nested inline table'; Text = 'a = { b = { c = 1 }, b.d = 2 }';             Pattern = 'an inline table cannot be extended' }
-        @{ Name = 'array of tables over a static array (spec)'; Text = "fruits = []`n[[fruits]]";                Pattern = 'static array' }
-        @{ Name = 'array of tables over a table';       Text = "[a]`n[[a]]";                                     Pattern = "'a' is already a table" }
-        @{ Name = 'table over an array of tables';      Text = "[[a]]`n[a]";                                     Pattern = 'already defined as an array of tables' }
-        @{ Name = 'sub-table before its array (spec)';  Text = "[fruit.physical]`ncolor = `"red`"`n[[fruit]]";   Pattern = "'fruit' is already a table" }
-        @{ Name = 'dotted keys into an array of tables'; Text = "[[a.b]]`n[a]`nb.c = 1";                         Pattern = 'it is an array of tables' }
-        @{ Name = 'trailing comma in an inline table';  Text = 'a = { b = 1, }';                                 Pattern = 'trailing comma' }
-        @{ Name = 'newline inside an inline table';     Text = "a = { b = 1,`nc = 2 }";                          Pattern = 'stay on one line' }
-        @{ Name = 'newline after an opening brace';     Text = "a = {`n}";                                       Pattern = 'stay on one line' }
-        @{ Name = 'newline before a closing brace';     Text = "a = { b = 1`n}";                                 Pattern = 'stay on one line' }
-        @{ Name = 'comment inside an inline table';     Text = 'a = { b = 1 # c }';                              Pattern = 'stay on one line' }
-        @{ Name = 'missing comma in an inline table';   Text = 'a = { b = 1 c = 2 }';                            Pattern = "Expected ',' or '\}' in an inline table" }
-        @{ Name = 'unclosed inline table';              Text = 'a = { b = 1';                                    Pattern = 'end of the document' }
-        @{ Name = 'missing comma in an array';          Text = 'a = [1 2]';                                      Pattern = "Expected ',' or '\]' after an array element" }
-        @{ Name = 'leading comma in an array';          Text = 'a = [,1]';                                       Pattern = 'Expected a value' }
-        @{ Name = 'double comma in an array';           Text = 'a = [1,,2]';                                     Pattern = 'Expected a value' }
-        @{ Name = 'unclosed array';                     Text = 'a = [1, 2';                                      Pattern = 'end of the document' }
-        @{ Name = 'unterminated basic string';          Text = 'a = "abc';                                       Pattern = 'Unterminated string' }
-        @{ Name = 'basic string cut by a newline';      Text = "a = `"abc`nb = 1";                               Pattern = 'Unterminated string' }
-        @{ Name = 'unterminated literal string';        Text = "a = 'abc";                                       Pattern = 'Unterminated string' }
-        @{ Name = 'unterminated multi-line string';     Text = "a = `"`"`"abc`nb = 1";                           Pattern = 'Unterminated multi-line string' }
-        @{ Name = 'unterminated multi-line literal';    Text = "a = '''abc`nb = 1";                              Pattern = 'Unterminated multi-line string' }
-        @{ Name = 'backslash before the end of the input'; Text = 'a = """abc\';                                 Pattern = 'Unterminated multi-line string' }
-        @{ Name = 'six closing quotes';                 Text = 'a = """x""""""';                                 Pattern = 'Expected the end of the line' }
-        @{ Name = 'invalid escape';                     Text = 'a = "\x41"';                                     Pattern = "Invalid escape sequence '\\x'" }
-        @{ Name = 'escaped space';                      Text = 'a = "a\ b"';                                     Pattern = 'backslash followed by U\+0020' }
-        @{ Name = 'escaped space in a multi-line string'; Text = 'a = """a\ b"""';                               Pattern = 'backslash followed by U\+0020' }
-        @{ Name = 'escape in a quoted key';             Text = '"a\qb" = 1';                                     Pattern = "Invalid escape sequence '\\q'" }
-        @{ Name = 'short \u escape';                    Text = 'a = "\u12"';                                     Pattern = 'must be followed by 4 hexadecimal digits' }
-        @{ Name = 'short \U escape';                    Text = 'a = "\U0001F60"';                                Pattern = 'must be followed by 8 hexadecimal digits' }
-        @{ Name = 'surrogate \u escape';                Text = 'a = "\uD800"';                                   Pattern = 'not a Unicode scalar value' }
-        @{ Name = '\U escape above U+10FFFF';           Text = 'a = "\U00110000"';                               Pattern = 'not a Unicode scalar value' }
-        @{ Name = '\U escape with the sign bit';        Text = 'a = "\UFFFFFFFF"';                               Pattern = 'not a Unicode scalar value' }
-        @{ Name = 'multi-line string as a key';         Text = '"""a""" = 1';                                    Pattern = 'cannot be used as a key' }
-        @{ Name = 'multi-line literal as a key';        Text = "'''a''' = 1";                                    Pattern = 'cannot be used as a key' }
-        @{ Name = 'missing value';                      Text = 'a = ';                                           Pattern = 'Expected a value, found the end of the document' }
-        @{ Name = 'missing value before a comment (spec)'; Text = 'key = # INVALID';                             Pattern = 'Expected a value, found a comment' }
-        @{ Name = 'value on the next line (spec)';      Text = "key =`n`"value`"";                               Pattern = 'Expected a value, found the end of the line' }
-        @{ Name = 'missing equals sign';                Text = 'a 1';                                            Pattern = "Expected '=' after the key 'a'" }
-        @{ Name = 'key without a value';                Text = "a`nb = 1";                                       Pattern = "Expected '=' after the key 'a', found the end of the line" }
-        @{ Name = 'two pairs on one line (spec)';       Text = 'first = "Ada" last = "Example"';                 Pattern = 'Expected the end of the line' }
-        @{ Name = 'text after a header';                Text = '[a] b = 1';                                      Pattern = 'Expected the end of the line' }
-        @{ Name = 'empty bare key (spec)';              Text = '= "no key name"';                                Pattern = 'Expected a key' }
-        @{ Name = 'empty dotted part';                  Text = 'a..b = 1';                                       Pattern = 'Expected a key' }
-        @{ Name = 'leading dot';                        Text = '.a = 1';                                         Pattern = 'Expected a key' }
-        @{ Name = 'trailing dot';                       Text = 'a. = 1';                                         Pattern = 'Expected a key' }
-        @{ Name = 'empty header';                       Text = '[]';                                             Pattern = 'Expected a key' }
-        @{ Name = 'unclosed header';                    Text = '[a';                                             Pattern = "Expected '\]' to close the table header" }
-        @{ Name = 'unclosed array of tables header';    Text = '[[a]';                                           Pattern = "Expected '\]\]'" }
-        @{ Name = 'space between closing brackets';     Text = '[[a] ]';                                         Pattern = "Expected '\]\]'" }
-        @{ Name = 'space between opening brackets';     Text = '[ [a] ]';                                        Pattern = 'Expected a key' }
-        @{ Name = 'non-ASCII bare key';                 Text = ($ctl['eAcute'] + ' = 1');                        Pattern = 'Expected a key' }
-        @{ Name = 'capitalized boolean';                Text = 'a = True';                                       Pattern = 'Invalid value' }
-        @{ Name = 'unquoted string';                    Text = 'a = abc';                                        Pattern = 'Invalid value' }
-        @{ Name = 'leading zero';                       Text = 'a = 01';                                         Pattern = 'Invalid value' }
-        @{ Name = 'double underscore';                  Text = 'a = 1__2';                                       Pattern = 'Invalid value' }
-        @{ Name = 'leading underscore';                 Text = 'a = _1';                                         Pattern = 'Invalid value' }
-        @{ Name = 'trailing underscore';                Text = 'a = 1_';                                         Pattern = 'Invalid value' }
-        @{ Name = 'signed hexadecimal';                 Text = 'a = +0x1';                                       Pattern = 'Invalid value' }
-        @{ Name = 'uppercase prefix';                   Text = 'a = 0X1F';                                       Pattern = 'Invalid value' }
-        @{ Name = 'underscore after a prefix';          Text = 'a = 0x_1';                                       Pattern = 'Invalid value' }
-        @{ Name = 'octal digit 8';                      Text = 'a = 0o8';                                        Pattern = 'Invalid value' }
-        @{ Name = 'binary digit 2';                     Text = 'a = 0b2';                                        Pattern = 'Invalid value' }
-        @{ Name = 'float without an integer part (spec)'; Text = 'a = .7';                                       Pattern = 'Invalid value' }
-        @{ Name = 'float without a fraction (spec)';    Text = 'a = 7.';                                         Pattern = 'Invalid value' }
-        @{ Name = 'float with an empty fraction (spec)'; Text = 'a = 3.e+20';                                    Pattern = 'Invalid value' }
-        @{ Name = 'float with an empty exponent';       Text = 'a = 1e';                                         Pattern = 'Invalid value' }
-        @{ Name = 'float with a leading zero';          Text = 'a = 03.14';                                      Pattern = 'Invalid value' }
-        @{ Name = 'capitalized infinity';               Text = 'a = Inf';                                        Pattern = 'Invalid value' }
-        @{ Name = 'capitalized NaN';                    Text = 'a = NaN';                                        Pattern = 'Invalid value' }
-        @{ Name = 'integer above the 64-bit range';     Text = 'a = 9223372036854775808';                        Pattern = 'Integer out of range' }
-        @{ Name = 'integer below the 64-bit range';     Text = 'a = -9223372036854775809';                       Pattern = 'Integer out of range' }
-        @{ Name = 'hexadecimal above the range';        Text = 'a = 0x8000000000000000';                         Pattern = 'Integer out of range' }
-        @{ Name = 'octal above the range';              Text = 'a = 0o1000000000000000000000';                   Pattern = 'Integer out of range' }
-        @{ Name = 'binary above the range';             Text = ('a = 0b1' + ('0' * 63));                         Pattern = 'Integer out of range' }
-        @{ Name = 'float out of range';                 Text = 'a = 1e400';                                      Pattern = 'Float out of range' }
-        @{ Name = 'month 13';                           Text = 'a = 1979-13-01';                                 Pattern = 'Invalid date or time' }
-        @{ Name = 'February 30';                        Text = 'a = 1979-02-30';                                 Pattern = 'Invalid date or time' }
-        @{ Name = 'February 29 of a common year';       Text = 'a = 2023-02-29';                                 Pattern = 'Invalid date or time' }
-        @{ Name = 'February 29 of 1900';                Text = 'a = 1900-02-29';                                 Pattern = 'Invalid date or time' }
-        @{ Name = 'day 31 of April';                    Text = 'a = 1979-04-31';                                 Pattern = 'Invalid date or time' }
-        @{ Name = 'hour 24';                            Text = 'a = 1979-05-27T24:00:00';                        Pattern = 'Invalid date or time' }
-        @{ Name = 'minute 60';                          Text = 'a = 07:60:00';                                   Pattern = 'Invalid date or time' }
-        @{ Name = 'second 61';                          Text = 'a = 07:32:61';                                   Pattern = 'Invalid date or time' }
-        @{ Name = 'time without seconds';               Text = 'a = 07:32';                                      Pattern = 'Invalid date or time' }
-        @{ Name = 'offset hour 24';                     Text = 'a = 1979-05-27T07:32:00+24:00';                  Pattern = 'Invalid date or time' }
-        @{ Name = 'one-digit month';                    Text = 'a = 1979-5-27';                                  Pattern = 'Invalid date or time' }
-        @{ Name = 'offset on a local time';             Text = 'a = 07:32:00Z';                                  Pattern = 'Invalid date or time' }
-        @{ Name = 'empty fraction of a second';         Text = 'a = 07:32:00.';                                  Pattern = 'Invalid date or time' }
-        @{ Name = 'date followed by a number';          Text = 'a = 1979-05-27 123';                             Pattern = 'Invalid date or time' }
-        @{ Name = 'bare carriage return';               Text = "a = 1`rb = 2";                                   Pattern = 'carriage return without a line feed' }
-        @{ Name = 'carriage return at the end';         Text = "a = 1`r";                                        Pattern = 'Carriage return without a line feed' }
-        @{ Name = 'carriage return in a multi-line string'; Text = "a = `"`"`"x`ry`"`"`"";                       Pattern = 'Carriage return without a line feed in a multi-line string' }
-        @{ Name = 'carriage return in a comment';       Text = "# x`ry`na = 1";                                  Pattern = 'carriage return' }
-        @{ Name = 'control character in a basic string'; Text = ('a = "x' + $ctl['bell'] + 'y"');                Pattern = 'control character U\+0007' }
-        @{ Name = 'DEL in a basic string';              Text = ('a = "x' + $ctl['del'] + 'y"');                  Pattern = 'control character U\+007F' }
-        @{ Name = 'NUL in a literal string';            Text = ("a = 'x" + $ctl['nul'] + "y'");                  Pattern = 'control character U\+0000' }
-        @{ Name = 'ESC in a multi-line string';         Text = ('a = """x' + $ctl['esc'] + 'y"""');              Pattern = 'control character U\+001B' }
-        @{ Name = 'DEL in a multi-line literal';        Text = ("a = '''x" + $ctl['del'] + "y'''");              Pattern = 'control character U\+007F' }
-        @{ Name = 'control character after a backslash'; Text = ('a = "x\' + $ctl['bell'] + '"');                Pattern = 'control character U\+0007' }
-        @{ Name = 'control character in a comment';     Text = ('# x' + $ctl['bell'] + 'y');                     Pattern = 'control character U\+0007' }
-        @{ Name = 'DEL in a comment after a value';     Text = ('a = 1 # x' + $ctl['del']);                      Pattern = 'control character U\+007F' }
-    )
-    foreach ($c in $cases) {
+    foreach ($c in $invalidCases) {
         It "rejects: $($c.Name)" {
             $ex = Get-TestTomlError $c.Text
             Assert-Match $ex.Message $c.Pattern
@@ -469,6 +624,60 @@ Describe 'ConvertFrom-AwToml: invalid documents' {
         $ex = Get-TestTomlError 'token = ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE1234'
         Assert-NotMatch $ex.Message 'FAKEFAKEFAKEFAKE'
         Assert-Match $ex.Message 'ghp_'
+    }
+}
+
+# Texts around the edges of tokens: date-time joins, spaced and invalid keys, comments where a
+# value or the end of the line is expected, extra closing quotes, a BOM, and the strings and keys
+# that a fast path hands over to the next reader. The bounded-window tests below parse them again
+# at small window sizes.
+$tokenCases = @(
+    @{ Name = 'a tab between a date and a time';      Text = "a = 1979-05-27`t07:32:00";   Line = 1; Column = 16; Pattern = "Expected the end of the line, found '07:32:00'" }
+    @{ Name = 'two spaces between a date and a time'; Text = 'a = 1979-05-27  07:32:00';   Line = 1; Column = 17; Pattern = "Expected the end of the line, found '07:32:00'" }
+    @{ Name = 'a word after a date and a space';      Text = 'a = 1979-05-27 x';           Line = 1; Column = 16; Pattern = "Expected the end of the line, found 'x'" }
+    @{ Name = 'spaces around a dot';                  Text = 'a . b = 1';                  Value = @{ a = @{ b = 1 } } }
+    @{ Name = 'a space before a dot';                 Text = 'a .b = 1';                   Value = @{ a = @{ b = 1 } } }
+    @{ Name = 'a space after a dot';                  Text = 'a. b = 1';                   Value = @{ a = @{ b = 1 } } }
+    @{ Name = 'quoted parts around a spaced dot';     Text = "`"a`" . 'b' = 1";            Value = @{ a = @{ b = 1 } } }
+    @{ Name = 'a spaced dotted header';               Text = '[ a . "b" ]';                Value = @{ a = @{ b = @{} } } }
+    @{ Name = 'a plus sign in a key';                 Text = 'a+b = 1';                    Line = 1; Column = 2;  Pattern = "Expected '=' after the key 'a', found '\+b'" }
+    @{ Name = 'a colon in a key';                     Text = 'a:b = 1';                    Line = 1; Column = 2;  Pattern = "Expected '=' after the key 'a', found ':b'" }
+    @{ Name = 'a plus sign in a header';              Text = '[a+b]';                      Line = 1; Column = 3;  Pattern = "Expected '\]' to close the table header, found '\+b'" }
+    @{ Name = 'a plus sign in an inline table key';   Text = 't = { a+b = 1 }';            Line = 1; Column = 8;  Pattern = "Expected '=' after the key 'a', found '\+b'" }
+    @{ Name = 'a comment instead of a value';         Text = 'a =   # c';                  Line = 1; Column = 7;  Pattern = 'Expected a value, found a comment' }
+    @{ Name = 'a comment inside an inline table';     Text = 'a = { b = 1   # c }';        Line = 1; Column = 15; Pattern = "Expected ',' or '\}': an inline table must stay on one line, found a comment" }
+    @{ Name = 'a carriage return after a comment';    Text = "a = 1 # c`rx";               Line = 1; Column = 10; Pattern = 'Expected the end of the line, found a carriage return without a line feed' }
+    @{ Name = 'a word after a string';                Text = 'a = "x" b';                  Line = 1; Column = 9;  Pattern = "Expected the end of the line, found 'b'" }
+    @{ Name = 'four closing quotes';                  Text = 'a = """x""""';               Value = @{ a = 'x"' } }
+    @{ Name = 'five closing quotes';                  Text = 'a = """x"""""';              Value = @{ a = 'x""' } }
+    @{ Name = 'four closing apostrophes';             Text = "a = '''x''''";               Value = @{ a = "x'" } }
+    @{ Name = 'five closing apostrophes';             Text = "a = '''x'''''";              Value = @{ a = "x''" } }
+    @{ Name = 'a BOM before the first key';           Text = ((& $aw { [string]$script:AwBom }) + 'a = 1'); Value = @{ a = 1 } }
+    @{ Name = 'an escaped string value';              Text = 'a = "x\ty"';                 Value = @{ a = "x`ty" } }
+    @{ Name = 'an escaped string in an array';        Text = 'a = [ "x\ty", "z" ]';        Value = @{ a = @("x`ty", 'z') } }
+    @{ Name = 'an escaped string in an inline table'; Text = 'a = { b = "x\ty" }';         Value = @{ a = @{ b = "x`ty" } } }
+    @{ Name = 'an invalid escape in a value';         Text = 'a = "x\qy"';                 Line = 1; Column = 7;  Pattern = "Invalid escape sequence '\\q'" }
+    @{ Name = 'a control character in a value';       Text = ('a = "x' + $ctl['bell'] + 'y"'); Line = 1; Column = 7; Pattern = 'Invalid character in a string: the control character U\+0007' }
+    @{ Name = 'an unterminated escaped string';       Text = 'a = "x\ty';                  Line = 1; Column = 5;  Pattern = 'Unterminated string' }
+    @{ Name = 'spaces before a dot in a key';         Text = 'a   .b = 1';                 Value = @{ a = @{ b = 1 } } }
+    @{ Name = 'spaces before a dot in a header';      Text = '[a   .b]';                   Value = @{ a = @{ b = @{} } } }
+    @{ Name = 'spaces before a dot in an inline key'; Text = 't = { a   .b = 1 }';         Value = @{ t = @{ a = @{ b = 1 } } } }
+    @{ Name = 'spaces before a quoted part';          Text = 'a   ."b" = 1';               Value = @{ a = @{ b = 1 } } }
+    @{ Name = 'spaces before a plus sign in a key';   Text = 'a   +b = 1';                 Line = 1; Column = 5;  Pattern = "Expected '=' after the key 'a', found '\+b'" }
+)
+
+Describe 'ConvertFrom-AwToml: results around the edges of tokens' {
+    foreach ($c in $tokenCases) {
+        It "reads $($c.Name) exactly" {
+            if ($c.ContainsKey('Value')) {
+                Assert-Equal $c.Value (ConvertFrom-TestToml $c.Text)
+            } else {
+                $ex = Get-TestTomlError $c.Text
+                Assert-Equal $c.Line $ex.Data['Line'] 'line'
+                Assert-Equal $c.Column $ex.Data['Column'] 'column'
+                Assert-Match $ex.Message $c.Pattern
+            }
+        }
     }
 }
 
@@ -578,6 +787,114 @@ Describe 'ConvertFrom-AwToml: hostile input finishes in under 2 seconds' {
     }
 }
 
+Describe 'ConvertFrom-AwToml: hostile input across window edges finishes in under 2 seconds' {
+    It '19,000 keys with 90-character strings (valid, almost the whole step budget)' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 19000 ('"' + ('x' * 90) + '"'))
+        Assert-Equal '' $r.Message
+        Assert-Equal 19000 $r.Value.Count
+        Assert-Equal ('x' * 90) $r.Value['k18999']
+    }
+    It '20,001 keys with 90-character strings (too complex at the last key)' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 20001 ('"' + ('x' * 90) + '"'))
+        Assert-Match $r.Message '^Invalid TOML at line 20001, column 1: The document is too complex'
+    }
+    It '1,900 bare keys of 1,000 to 1,100 characters (each one crosses a window edge)' {
+        $lines = foreach ($i in 0..1899) { ('k' * (1000 + $i % 101)) + $i + ' = ' + $i }
+        $r = Measure-TestHostileToml ($lines -join "`n")
+        Assert-Equal '' $r.Message
+        Assert-Equal 1900 $r.Value.Count
+        Assert-Equal 1899 $r.Value[('k' * 1081) + '1899']
+    }
+    It 'short keys after a 1.9 MB comment' {
+        $r = Measure-TestHostileToml ('#' + ('x' * 1900000) + "`n" + (New-TestTomlKeys 10000 '1'))
+        Assert-Equal '' $r.Message
+        Assert-Equal 10000 $r.Value.Count
+    }
+    It '19,990 keys, then a 1.8 MB comment after the last value' {
+        $r = Measure-TestHostileToml ((New-TestTomlKeys 19990 '1') + ' # ' + ('x' * 1800000))
+        Assert-Equal '' $r.Message
+        Assert-Equal 19990 $r.Value.Count
+    }
+    It '200k array lines with a comment each' {
+        $r = Measure-TestHostileToml ('a = [' + "`n" + (('  1, # c' + "`n") * 200000) + ']')
+        Assert-Match $r.Message 'too complex'
+    }
+    It 'an inline table of 60k keys' {
+        $parts = foreach ($i in 0..59999) { 'k' + $i + ' = 1' }
+        $r = Measure-TestHostileToml ('a = { ' + ($parts -join ', ') + ' }')
+        Assert-Match $r.Message 'too complex'
+    }
+    It '100k keys with a comment each' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 100000 '1 # c')
+        Assert-Match $r.Message '^Invalid TOML at line 20001, column 1: The document is too complex'
+    }
+    It 'a CRLF document of 20k keys (valid, the whole step budget)' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 20000 '1' "`r`n")
+        Assert-Equal '' $r.Message
+        Assert-Equal 20000 $r.Value.Count
+    }
+    It 'a key, 2 MB of spaces, then a dotted part' {
+        $r = Measure-TestHostileToml ('a' + (' ' * ($mb2 - 64)) + '.b = 1')
+        Assert-Equal '' $r.Message
+        Assert-Equal 1 $r.Value['a']['b']
+    }
+    It '1,900 dotted keys with 1,050 spaces before each dot (the key reader takes the run the main loop matched)' {
+        $lines = foreach ($i in 0..1899) { 'a' + (' ' * 1050) + '.b' + $i + ' = 1' }
+        $r = Measure-TestHostileToml ($lines -join "`n")
+        Assert-Equal '' $r.Message
+        Assert-Equal 1900 $r.Value['a'].Count
+    }
+    It '1,000 dotted keys with 1,050 spaces before each dot and escaped 1,010-character strings' {
+        $lines = foreach ($i in 0..999) { 'a' + (' ' * 1050) + '.b' + $i + ' = "' + ('x' * 1010) + '\n"' }
+        $r = Measure-TestHostileToml ($lines -join "`n")
+        Assert-Equal '' $r.Message
+        Assert-Equal 1000 $r.Value['a'].Count
+        Assert-Equal (('x' * 1010) + "`n") $r.Value['a']['b999']
+    }
+    It '2,040 keys with escaped 1,010-character strings (each string is matched once past a window edge, then handed over)' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 2040 ('"' + ('x' * 1010) + '\n"'))
+        Assert-Equal '' $r.Message
+        Assert-Equal 2040 $r.Value.Count
+        Assert-Equal (('x' * 1010) + "`n") $r.Value['k2039']
+    }
+    It '2,040 keys with escaped 1,010-character strings, the escape first' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 2040 ('"\n' + ('x' * 1010) + '"'))
+        Assert-Equal '' $r.Message
+        Assert-Equal 2040 $r.Value.Count
+        Assert-Equal ("`n" + ('x' * 1010)) $r.Value['k2039']
+    }
+    It '2,020 inline tables with an escaped 1,010-character string each' {
+        $r = Measure-TestHostileToml (New-TestTomlKeys 2020 ('{ b = "' + ('x' * 1010) + '\n" }'))
+        Assert-Equal '' $r.Message
+        Assert-Equal 2020 $r.Value.Count
+        Assert-Equal (('x' * 1010) + "`n") $r.Value['k2019']['b']
+    }
+    It 'an array of 2,040 escaped 1,010-character strings' {
+        $r = Measure-TestHostileToml ('a = [' + "`n" + (('"' + ('x' * 1010) + '\n",' + "`n") * 2040) + ']')
+        Assert-Equal '' $r.Message
+        Assert-Equal 2040 $r.Value['a'].Count
+        Assert-Equal (('x' * 1010) + "`n") $r.Value['a'][2039]
+    }
+    It 'still counts the steps of the readers that take a handed-over string (100 keys parse with 400 steps, 101 do not)' {
+        # One step per statement, then one each in Read-AwTomlValue, Read-AwTomlString and the escapes.
+        $value = '"' + ('x' * 1010) + '\n"'
+        $old = & $aw { $old = $script:AwTomlMaxSteps; $script:AwTomlMaxSteps = 400; $old }
+        try {
+            $r = Measure-TestHostileToml (New-TestTomlKeys 100 $value)
+            $over = Measure-TestHostileToml (New-TestTomlKeys 101 $value)
+        } finally {
+            & $aw { param($v) $script:AwTomlMaxSteps = $v } $old
+        }
+        Assert-Equal '' $r.Message
+        Assert-Equal (('x' * 1010) + "`n") $r.Value['k99']
+        Assert-Match $over.Message '^Invalid TOML at line 101, column 1: The document is too complex: more than 400 parse steps'
+    }
+    It 'a key, then an unterminated 2 MB string' {
+        $r = Measure-TestHostileToml ('k "' + ('x' * ($mb2 - 64)))
+        Assert-Match $r.Message "^Invalid TOML at line 1, column 3: Expected '=' after the key 'k', found '`"'"
+    }
+}
+
 Describe 'ConvertFrom-AwToml: round-trip types' {
     It 'parses a configuration file like its JSON equivalent, value for value' {
         Assert-Equal (Read-TestJson 'config.json') (Read-TestToml 'config.toml')
@@ -627,12 +944,233 @@ Describe 'ConvertFrom-AwToml: round-trip types' {
     }
 }
 
+Describe 'ConvertFrom-AwToml: bounded window (results do not depend on the window size)' {
+    $defaults = & $aw { @($script:AwTomlWindow, $script:AwTomlWindowMargin) }
+    $texts = New-Object System.Collections.Generic.List[string]
+    foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'fixtures') -Recurse -File -Filter '*.toml' | Sort-Object -Property FullName)) {
+        $texts.Add([System.IO.File]::ReadAllText($file.FullName))
+    }
+    foreach ($c in $invalidCases) { $texts.Add($c.Text) }
+    foreach ($c in $tokenCases) { $texts.Add($c.Text) }
+    # The texts of the line and column tests above.
+    foreach ($t in @("a = 1`nb = 2`n`nc = = 3", "a = 1`r`nb = = 2", "a = 1`n`na = 2", "[a]`nx = 1`n[a]", "a = 1`nb = `"`"`"x`ny`nz",
+        "a = 1`nb = `"ok \q`"", "a = `"`"`"`nok`nbad \q`n`"`"`"", 'token = ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE1234')) { $texts.Add($t) }
+    $texts = $texts.ToArray()
+    # A 4 MB window holds every document whole, as the parser did before windows.
+    $whole = Get-TestTomlOutcomes $texts 4194304 16
+    foreach ($pair in @(@(4, 3), @(5, 3), @(7, 3), @(17, 16), @(64, 16), $defaults)) {
+        It "gives the same values, messages, lines and columns with a window of $($pair[0]) and a margin of $($pair[1]) (fixtures, invalid and edge cases)" {
+            $outcomes = Get-TestTomlOutcomes $texts $pair[0] $pair[1]
+            Compare-TestTomlOutcomes $texts $whole $outcomes ('window ' + $pair[0] + ', margin ' + $pair[1])
+        }
+    }
+    $docs = New-TestTomlFuzz 20261019 300
+    $wholeDocs = Get-TestTomlOutcomes $docs 4194304 16
+    foreach ($pair in @(@(5, 3), @(17, 16))) {
+        It "gives the same results on 300 seeded random documents with a window of $($pair[0]) and a margin of $($pair[1])" {
+            $outcomes = Get-TestTomlOutcomes $docs $pair[0] $pair[1]
+            Compare-TestTomlOutcomes $docs $wholeDocs $outcomes ('seeded documents, window ' + $pair[0] + ', margin ' + $pair[1])
+        }
+    }
+    It 'matches each windowed regex at every position as on the whole text, moving forward and back' {
+        $tricky = @(
+            ('k = "a\"b\\c\' + $ctl['bell'] + 'd" ""x""" e"""""f' + "`n" + '"\' + "`r`n" + 'g\'),
+            ('  # c' + "`r`n" + '#' + $ctl['del'] + "`n`t`r" + 'x' + "`r`n`r`n" + '# z' + "`r" + ' ' + $ctl['nul'] + ' #' + $ctl['lineSeparator'] + "`t"),
+            ('key_1-2.a+b:c 1979-05-27 07:32:00Z 0x1F_a inf' + "'lit'" + $ctl['esc'] + "x'''y''''z'" + "`r`n" + "'''"),
+            ("''x''''" + "`r`n" + "'" + $ctl['bell'] + "''' " + '"""" "" """\' + "`n" + '""\""""')
+        )
+        $names = @('AwTomlRxWs', 'AwTomlRxTrivia', 'AwTomlRxLineEnd', 'AwTomlRxBareKey', 'AwTomlRxToken',
+            'AwTomlRxBasic', 'AwTomlRxMlBasic', 'AwTomlRxLiteral', 'AwTomlRxMlLiteral')
+        foreach ($pair in @(@(4, 3), @(17, 16))) {
+            $old = Set-TestTomlWindow $pair[0] $pair[1]
+            try {
+                # The same three lines as every windowed match in the parser, then the match on the whole text.
+                $bad = & $aw {
+                    param($Texts, $Names)
+                    $out = New-Object System.Collections.Generic.List[string]
+                    foreach ($name in $Names) {
+                        $rx = Get-Variable -Name $name -Scope Script -ValueOnly
+                        foreach ($T in $Texts) {
+                            $s = @{ T = $T; W = ''; Wb = 0; Wl = -1 }
+                            $W = ''; $wb = 0; $wl = -1
+                            foreach ($p in @(@(0..$T.Length) + @($T.Length..0))) {
+                                if ($p -lt $wb -or $p -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s $p }
+                                $m = $rx.Match($W, $p - $wb)
+                                if ($p + $m.Length -gt $wl) { $m, $W, $wb, $wl = Find-AwTomlMatch $s $rx $p }
+                                $whole = $rx.Match($T, $p)
+                                if ($m.Success -ne $whole.Success -or $m.Length -ne $whole.Length -or
+                                    -not [string]::Equals($m.Value, $whole.Value, [System.StringComparison]::Ordinal)) {
+                                    $out.Add($name + ' at ' + $p + ' of <' + $T + '>: <' + $m.Value + '> instead of <' + $whole.Value + '>')
+                                }
+                            }
+                        }
+                    }
+                    return ,$out.ToArray()
+                } $tricky $names
+            } finally {
+                $null = Set-TestTomlWindow $old[0] $old[1]
+            }
+            Assert-Equal 0 @($bad).Count ('window ' + $pair[0] + ': ' + (@($bad | Select-Object -First 3) -join ' | '))
+        }
+    }
+    It 'returns the match and the new window from Find-AwTomlMatch, and keeps the window in the state' {
+        $old = Set-TestTomlWindow 4 3
+        try {
+            $r = & $aw {
+                param($T)
+                $s = @{ T = $T; W = ''; Wb = 0; Wl = -1 }
+                $moved = @(Move-AwTomlWindow $s 0)
+                $found = @(Find-AwTomlMatch $s $script:AwTomlRxWs 1)
+                return ,@($moved.Count, $found.Count, $found[0].Length, $found[1], $found[2], $found[3], $s.W, $s.Wb, $s.Wl)
+            } ('x' + (' ' * 50) + 'y')
+        } finally {
+            $null = Set-TestTomlWindow $old[0] $old[1]
+        }
+        # The 50 spaces fit the first larger window (64 characters), which is kept at the run.
+        $kept = (' ' * 50) + 'y'
+        Assert-Equal @(3, 4, 50, $kept, 1, 52, $kept, 1, 52) $r
+    }
+    It 'moves the window past a match longer than the first larger window' {
+        $old = Set-TestTomlWindow 4 3
+        try {
+            $r = & $aw {
+                param($T)
+                $s = @{ T = $T; W = ''; Wb = 0; Wl = -1 }
+                $found = @(Find-AwTomlMatch $s $script:AwTomlRxWs 1)
+                return ,@($found.Count, $found[0].Length, $found[1], $found[2], $found[3], $s.W, $s.Wb, $s.Wl)
+            } ('x' + (' ' * 100) + 'y')
+        } finally {
+            $null = Set-TestTomlWindow $old[0] $old[1]
+        }
+        # 100 spaces need more than 64 characters; the next window starts after them.
+        Assert-Equal @(4, 100, 'y', 101, 102, 'y', 101, 102) $r
+    }
+}
+
 Describe 'ConvertFrom-AwToml: source hygiene' {
     It 'keeps the parser and these tests ASCII-only (Windows PowerShell 5.1 reads BOM-less files as ANSI)' {
         $root = Split-Path -Parent $PSScriptRoot
         foreach ($file in @((Join-Path $root 'src\Core\Toml.ps1'), (Join-Path $PSScriptRoot 'Toml.Tests.ps1'))) {
             $bytes = [System.IO.File]::ReadAllBytes($file)
             Assert-Equal 0 @($bytes | Where-Object { $_ -gt 127 }).Count $file
+        }
+    }
+    It 'passes the document to one method call only, the Match of Format-AwTomlFound (AST)' {
+        # PowerShell 7.3+ logs every .NET method call made from script with the full text of its
+        # string arguments, so only an error path may give the whole document to a method.
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($tomlPath, [ref]$tokens, [ref]$errors)
+        Assert-Equal 0 @($errors).Count 'Toml.ps1 parses'
+        $found = New-Object System.Collections.Generic.List[string]
+        foreach ($call in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] }, $true)) {
+            $passes = $false
+            foreach ($arg in @($call.Arguments)) {
+                if ($null -ne $arg -and @($arg.FindAll({ param($n) Test-TestTomlDocumentRef $n }, $true)).Count -gt 0) { $passes = $true }
+            }
+            if (-not $passes) { continue }
+            $fn = $call.Parent
+            while ($null -ne $fn -and $fn -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $fn = $fn.Parent }
+            $where = '(script)'
+            if ($null -ne $fn) { $where = $fn.Name }
+            $found.Add($where + ': ' + $call.Member.Extent.Text + ' at line ' + $call.Extent.StartLineNumber)
+        }
+        Assert-Equal 1 $found.Count ($found -join '; ')
+        Assert-Match $found[0] '^Format-AwTomlFound: Match at line \d+$'
+    }
+    It 'runs every windowed match through the three-line template' {
+        # Before: move the window when the position is outside it. After: match again on larger
+        # windows when the match ends inside the margin.
+        $lines = [System.IO.File]::ReadAllLines($tomlPath)
+        $site = [regex]'^\s*\$(\w+) = \$([\w:]+)\.Match\(\$W, \$(\w+) - \$wb\)$'
+        $count = 0
+        $inFind = 0
+        $bad = New-Object System.Collections.Generic.List[string]
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line.IndexOf('.Match($W', [System.StringComparison]::Ordinal) -lt 0) { continue }
+            $m = $site.Match($line)
+            if (-not $m.Success) {
+                if ($line.Trim() -ceq '$m = $Rx.Match($W, 0)') { $inFind++ } else { $bad.Add('line ' + ($i + 1) + ' is not a template: ' + $line.Trim()) }
+                continue
+            }
+            $v = '$' + $m.Groups[1].Value
+            $rx = '$' + $m.Groups[2].Value
+            $p = '$' + $m.Groups[3].Value
+            $before = 'if (' + $p + ' -lt $wb -or ' + $p + ' -gt $wl) { $W, $wb, $wl = Move-AwTomlWindow $s ' + $p + ' }'
+            $after = 'if (' + $p + ' + ' + $v + '.Length -gt $wl) { ' + $v + ', $W, $wb, $wl = Find-AwTomlMatch $s ' + $rx + ' ' + $p + ' }'
+            if ($i -eq 0 -or $lines[$i - 1].Trim() -cne $before) { $bad.Add('line ' + $i + ' should be: ' + $before) }
+            if ($i + 1 -ge $lines.Count -or $lines[$i + 1].Trim() -cne $after) { $bad.Add('line ' + ($i + 2) + ' should be: ' + $after) }
+            $count++
+        }
+        Assert-Equal 0 $bad.Count ($bad -join '; ')
+        Assert-Equal 29 $count 'windowed match sites'
+        Assert-Equal 1 $inFind 'the first match of Find-AwTomlMatch'
+    }
+    It 'keeps the windowed regexes as they are, and the margin above their read-ahead' {
+        $expected = @{
+            AwTomlRxWs        = '\G[ \t]*'
+            AwTomlRxTrivia    = '\G(?>(?:[ \t]|\r?\n|#[^\x00-\x08\x0A-\x1F\x7F]*)*)'
+            AwTomlRxLineEnd   = '\G(?>[ \t]*)(?>(?:#[^\x00-\x08\x0A-\x1F\x7F]*)?)'
+            AwTomlRxBareKey   = '\G[A-Za-z0-9_-]+'
+            AwTomlRxToken     = '\G[0-9A-Za-z_+.:-]+'
+            AwTomlRxBasic     = '\G(?>(?:[^"\\\x00-\x08\x0A-\x1F\x7F]+|\\[^\x00-\x08\x0A-\x1F\x7F])*)'
+            AwTomlRxMlBasic   = '\G(?>(?:[^"\\\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+|\\[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|"(?!""))*)'
+            AwTomlRxLiteral   = '\G[^''\x00-\x08\x0A-\x1F\x7F]*'
+            AwTomlRxMlLiteral = '\G(?>(?:[^''\x00-\x08\x0B\x0C\x0E-\x1F\x7F]+|''(?!''''))*)'
+        }
+        foreach ($name in $expected.Keys) {
+            $actual = & $aw { param($n) [string](Get-Variable -Name $n -Scope Script -ValueOnly) } $name
+            Assert-Equal $expected[$name] $actual ($name + ' changed: re-check the read-ahead table')
+        }
+        $window = & $aw { @($script:AwTomlWindow, $script:AwTomlWindowMargin) }
+        Assert-True ($window[1] -ge 3) ('AwTomlWindowMargin is ' + $window[1] + ': re-check the read-ahead table')
+        Assert-True ($window[0] -gt $window[1]) 'the window is larger than its margin'
+    }
+}
+
+Describe 'ConvertFrom-AwToml: TEMPORARY PROBE' {
+    It 'TEMPORARY PROBE (delete before merge): cost of .NET calls by argument length, and the 1M-element array at four windows' {
+        # Prints AW-PROBE lines for the pwsh CI job and asserts nothing. Each measure is the best of
+        # three rounds, in microseconds per iteration of the loop.
+        $calls = 2000
+        Write-Host ('AW-PROBE PowerShell ' + $PSVersionTable.PSVersion + ', best of 3 rounds of ' + $calls + ' calls')
+        $best = [double]::MaxValue
+        for ($round = 0; $round -lt 3; $round++) {
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            for ($i = 0; $i -lt $calls; $i++) { }
+            $best = [Math]::Min($best, $sw.Elapsed.TotalMilliseconds)
+        }
+        Write-Host ('AW-PROBE empty loop: ' + [Math]::Round($best * 1000 / $calls, 2) + ' us per iteration')
+        $rx = & $aw { $script:AwTomlRxWs }
+        foreach ($len in 16, 256, 1024, 4096, 65536) {
+            $text = 'x' * $len
+            $best = [double]::MaxValue
+            for ($round = 0; $round -lt 3; $round++) {
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                for ($i = 0; $i -lt $calls; $i++) { $null = $rx.Match($text, 0) }
+                $best = [Math]::Min($best, $sw.Elapsed.TotalMilliseconds)
+            }
+            Write-Host ('AW-PROBE Match(s, 0) with s of ' + $len + ' characters: ' + [Math]::Round($best * 1000 / $calls, 2) + ' us per call')
+        }
+        $m = ([regex]'x').Match(('x' * 65536), 0)
+        $best = [double]::MaxValue
+        for ($round = 0; $round -lt 3; $round++) {
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            for ($i = 0; $i -lt $calls; $i++) { $m = $m.NextMatch() }
+            $best = [Math]::Min($best, $sw.Elapsed.TotalMilliseconds)
+        }
+        Write-Host ('AW-PROBE NextMatch(): ' + [Math]::Round($best * 1000 / $calls, 2) + ' us per call')
+        $doc = 'a = [' + ('1,' * 1000000) + ']'
+        $old = Set-TestTomlWindow 1024 16
+        try {
+            foreach ($size in 256, 512, 1024, 2048) {
+                $null = Set-TestTomlWindow $size 16
+                $r = Measure-TestToml $doc
+                Write-Host ('AW-PROBE 1M array elements, window ' + $size + ': ' + [Math]::Round($r.Seconds, 3) + ' s')
+            }
+        } finally {
+            $null = Set-TestTomlWindow $old[0] $old[1]
         }
     }
 }
