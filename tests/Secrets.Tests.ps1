@@ -232,6 +232,46 @@ Describe 'AW-SEC-009 generic hard-coded values' {
     It 'accepts high-entropy literals with various key styles' {
         foreach ($t in @($fx['generic']['positives'])) { Assert-Equal 1 (Get-SecretCount 'AW-SEC-009' $t) $t }
     }
+    It 'ignores the environment variable names of Codex MCP servers (env_http_headers, bearer_token_env_var, env_vars)' {
+        # Regression: env_http_headers values such as "X-Api-Key" = "DOCS_API_KEY" name variables.
+        $root = Join-Path $tmp 'codex-names'
+        New-TestFile (Join-Path $root '.codex\config.toml') ((@(
+            '[mcp_servers.docs]',
+            'url = "https://mcp.example.invalid/mcp"',
+            'bearer_token_env_var = "DOCS_BEARER_TOKEN"',
+            'env_http_headers = { "X-Api-Key" = "DOCS_API_KEY", "X-Auth-Token" = "DOCS_AUTH_TOKEN" }',
+            '',
+            '[mcp_servers.local]',
+            'command = "fake-server"',
+            'env_vars = ["LOCAL_SECRET_TOKEN", { name = "REMOTE_API_KEY", source = "remote" }]',
+            '',
+            '[mcp_servers.local.env_http_headers]',
+            '"X-Secret-Token" = "LOCAL_HEADER_TOKEN"',
+            '',
+            '[plugins.fake-plugin.mcp_servers.helper.env_http_headers]',
+            '"X-Api-Token" = "HELPER_API_TOKEN"'
+        ) -join "`n") + "`n")
+        # The same name in another file is not a Codex variable reference there.
+        New-TestFile (Join-Path $root 'AGENTS.md') "Example header: X-Api-Key = DOCS_API_KEY`n"
+        Assert-Equal 0 (Get-Rule $root 'AW-SEC-009' 'config.toml').Count
+        Assert-Equal @(1) (Get-Lines (Get-Rule $root 'AW-SEC-009' 'AGENTS.md'))
+        Assert-Equal 1 (Get-SecretCount 'AW-SEC-009' '"X-Api-Key" = "DOCS_API_KEY"') 'the scanner alone flags the pair'
+    }
+    It 'still reports literal Codex header values, invalid variable names and names reused as literals' {
+        $root = Join-Path $tmp 'codex-literals'
+        New-TestFile (Join-Path $root '.codex\config.toml') ((@(
+            '[mcp_servers.docs]',
+            'http_headers = { "X-Api-Key" = "DOCS_API_KEY" }',
+            '[mcp_servers.other]',
+            'env_http_headers = { "X-Auth-Token" = "FAKE-literal-token-9f8e7d" }',
+            '[mcp_servers.third]',
+            'env_http_headers = { "X-Api-Token" = "SHARED_API_TOKEN" }',
+            'http_headers = { "X-Other-Token" = "SHARED_API_TOKEN" }'
+        ) -join "`n") + "`n")
+        $f = Get-Rule $root 'AW-SEC-009' 'config.toml'
+        Assert-Equal @(2, 4, 6, 7) (Get-Lines $f)
+        Assert-Equal @('X-Api-Key', 'X-Auth-Token', 'X-Api-Token', 'X-Other-Token') @($f | ForEach-Object { $_.Location.Key })
+    }
     It 'computes the entropy filter in bits per character' {
         $e = & $aw { @((Get-AwSecEntropy 'aaaaaaaa'), (Get-AwSecEntropy 'abcdefgh'), (Get-AwSecEntropy '')) }
         Assert-Equal 0 ([int]$e[0]); Assert-Equal 3 ([int][Math]::Round($e[1])); Assert-Equal 0 ([int]$e[2])

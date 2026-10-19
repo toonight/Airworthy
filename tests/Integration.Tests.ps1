@@ -58,9 +58,9 @@ try {
             Assert-True ($rm.Score.Score -lt $rh.Score.Score) "mixed $($rm.Score.Score), hardened $($rh.Score.Score)"
             Assert-NotContains @('A', 'F') $rm.Score.Grade
         }
-        It 'detects VS Code Copilot, Claude Code and MCP in each fixture' {
+        It 'detects VS Code Copilot, Claude Code, Codex CLI and MCP in each fixture' {
             foreach ($r in @($ri, $rh, $rm)) {
-                foreach ($h in @('vscode-copilot', 'claude-code', 'mcp')) { Assert-Contains $r.Harnesses $h $r.Root }
+                foreach ($h in @('vscode-copilot', 'claude-code', 'codex', 'mcp')) { Assert-Contains $r.Harnesses $h $r.Root }
                 Assert-NotContains $r.Harnesses 'copilot-cli' $r.Root
             }
         }
@@ -72,7 +72,7 @@ try {
         }
         It 'reports findings from every rule area on the insecure fixture' {
             $ids = Get-AwRuleIds $ri
-            foreach ($area in @('VSC', 'AGT', 'SEC', 'MCP', 'CC')) {
+            foreach ($area in @('VSC', 'AGT', 'SEC', 'MCP', 'CC', 'CDX')) {
                 Assert-True (@($ids | Where-Object { $_ -like "AW-$area-*" }).Count -gt 0) $area
             }
         }
@@ -113,7 +113,7 @@ try {
         It 'registers about 40 rules or more, each with complete metadata' {
             Assert-True ($rules.Count -ge 40) "$($rules.Count) rules"
             foreach ($rule in $rules) {
-                Assert-Match $rule.Id '^AW-(VSC|AGT|SEC|MCP|CC|CLI)-[0-9]{3}$'
+                Assert-Match $rule.Id '^AW-(VSC|AGT|SEC|MCP|CC|CLI|CDX)-[0-9]{3}$'
                 foreach ($field in @('Title', 'Severity', 'Category', 'Harness', 'Description', 'Fix', 'Confidence')) {
                     Assert-True ([string]$rule.$field -ne '') "$($rule.Id) $field"
                 }
@@ -162,6 +162,7 @@ try {
             Assert-NotMatch $html '(?i)<(script|link|img|iframe)\b[^>]*\b(src|href)\s*=\s*["'']?(https?:)?//'
             foreach ($text in @($md, $html, [System.IO.File]::ReadAllText($base + '.json'), [System.IO.File]::ReadAllText($base + '.sarif'))) {
                 Assert-False $text.Contains('FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE1234') 'the fake token is masked'
+                Assert-False $text.Contains('FAKE-tracker-secret-FAKE-0007') 'the fake Codex client secret is masked'
             }
         }
         It 'strips a known extension from -OutFile' {
@@ -184,7 +185,7 @@ try {
         It 'prints the console report unless -Quiet' {
             $records = @(Invoke-Airworthy -Path $insecure -NoUserProfile 6>&1)
             $text = (@($records | ForEach-Object { if ($_.PSObject.Properties['MessageData']) { [string]$_.MessageData.Message } else { [string]$_ } }) -join "`n")
-            Assert-Match $text 'Airworthy 0\.1\.0'
+            Assert-Match $text 'Airworthy 0\.2\.0'
             Assert-Match $text 'grade F'
             Assert-Match $text 'AW-VSC-001'
             $quiet = @(Invoke-Airworthy -Path $insecure -NoUserProfile -Quiet 6>&1)

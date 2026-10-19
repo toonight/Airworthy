@@ -22,14 +22,15 @@
     'vscode-copilot': 'VS Code Copilot',
     'claude-code': 'Claude Code',
     'copilot-cli': 'Copilot CLI',
+    'codex': 'Codex CLI',
     'mcp': 'MCP',
     'generic': 'Any harness'
   };
-  var HARNESS_ORDER = ['vscode-copilot', 'claude-code', 'copilot-cli', 'mcp', 'generic'];
+  var HARNESS_ORDER = ['vscode-copilot', 'claude-code', 'copilot-cli', 'codex', 'mcp', 'generic'];
   // References become links only when they are https URLs on one of these documentation hosts.
   var LINK_HOSTS = ['code.visualstudio.com', 'docs.github.com', 'github.com', 'docs.anthropic.com',
     'code.claude.com', 'genai.owasp.org', 'owasp.org', 'docs.oasis-open.org', 'modelcontextprotocol.io',
-    'learn.microsoft.com'];
+    'learn.microsoft.com', 'learn.chatgpt.com'];
   var GAUGE_LENGTH = 2 * Math.PI * 84;
   var PLAIN_TEXT = /^[\t\n\x20-\x7e]*$/;
 

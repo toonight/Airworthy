@@ -1,0 +1,65 @@
+# Strings from the TOML 1.0 specification (https://toml.io/en/v1.0.0#string), with synthetic
+# values, and edge cases. tests/fixtures/toml/strings.json holds the expected values.
+str = "I'm a string. \"You can quote me\". Name\tJos\u00E9\nLocation\tSF."
+escapes = "b\b t\t n\n f\f r\r q\" s\\ u\u0041 U\U0001F600"
+escaped_backslash_u = "\\u0041"
+tricky = "\\\"\\n"
+hash = "# This is not a comment"
+empty_basic = ""
+empty_literal = ''
+tab = "a	b"
+literal_tab = 'a	b'
+
+str1 = """
+Roses are red
+Violets are blue"""
+
+str2 = "The quick brown fox jumps over the lazy dog."
+
+str3 = """
+The quick brown \
+
+
+  fox jumps over \
+    the lazy dog."""
+
+str4 = """\
+       The quick brown \
+       fox jumps over \
+       the lazy dog.\
+       """
+
+str5 = """Here are two quotation marks: "". Simple enough."""
+str6 = """Here are three quotation marks: ""\"."""
+str7 = """Here are fifteen quotation marks: ""\"""\"""\"""\"""\"."""
+str8 = """"This," she said, "is just a pointless statement.""""
+
+winpath = 'C:\Example\templates'
+winpath2 = '\\ExampleServer\admin$\system32\'
+quoted = 'Ada "Dubs" Example'
+regex = '<\i\c*\s*>'
+
+regex2 = '''I [dw]on't need \d{2} apples'''
+lines = '''
+The first newline is
+trimmed in raw strings.
+   All other whitespace
+   is preserved.
+'''
+quot15 = '''Here are fifteen quotation marks: """""""""""""""'''
+apos15 = "Here are fifteen apostrophes: '''''''''''''''"
+str9 = ''''That,' she said, 'is still pointless.''''
+
+ml_escapes = """tab\tquote\"backslash\\ unicode\u00E9 end"""
+ml_escaped_backslash = """keep \\
+newline"""
+ml_two_quotes_at_end = """a"""""
+ml_one_quote = """""""
+ml_empty = """"""
+ml_only_newline = """
+"""
+ml_two_newlines = """
+
+"""
+ml_literal_quotes_at_end = '''a'''''
+ml_literal_empty = ''''''

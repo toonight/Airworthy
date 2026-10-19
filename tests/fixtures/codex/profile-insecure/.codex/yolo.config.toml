@@ -1,0 +1,3 @@
+# Synthetic Codex CLI profile (codex --profile yolo), INSECURE on purpose.
+sandbox_mode = "danger-full-access"
+approval_policy = "never"

@@ -1,0 +1,80 @@
+# Tables, inline tables and arrays of tables from the TOML 1.0 specification
+# (https://toml.io/en/v1.0.0#table), with synthetic values.
+root_key = "before the first header"
+
+[table-1]
+key1 = "some string"
+key2 = 123
+
+[table-2]
+key1 = "another string"
+key2 = 456
+
+[dog."tater.man"]
+type.name = "pug"
+
+[a.b.c]            # this is best practice
+[ d.e.f ]          # same as [d.e.f]
+[ g .  h  . i ]    # same as [g.h.i]
+[ j . "\u029E" . 'l' ]  # same as [j."<U+029E>".'l']
+
+# [x] you
+# [x.y] don't
+# [x.y.z] need these
+[x.y.z.w] # for this to work
+
+[x] # defining a super-table afterward is ok
+
+[fruit]
+apple.color = "red"
+apple.taste.sweet = true
+
+[fruit.apple.texture]  # you can add sub-tables
+smooth = true
+
+[animal]
+inline = { type.name = "pug" }
+name = { first = "Ada", last = "Example" }
+point = { x = 1, y = 2 }
+empty = {}
+nested = { inner = { deep = [1, { k = "v" }] } }
+spanning = { list = [
+  1,
+  2,
+] }
+
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+[[products]]  # empty table within the array
+
+[[products]]
+name = "Nail"
+sku = 284758393
+
+color = "gray"
+
+[[fruits]]
+name = "apple"
+
+[fruits.physical]  # subtable
+color = "red"
+shape = "round"
+
+[[fruits.varieties]]  # nested array of tables
+name = "red delicious"
+
+[[fruits.varieties]]
+name = "granny smith"
+
+[[fruits]]
+name = "banana"
+
+[[fruits.varieties]]
+name = "plantain"
+
+[inline_arrays]
+points = [ { x = 1, y = 2, z = 3 },
+           { x = 7, y = 8, z = 9 },
+           { x = 2, y = 4, z = 8 } ]

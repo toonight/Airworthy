@@ -1,17 +1,18 @@
 {
   "Tool": {
     "Name": "Airworthy",
-    "Version": "0.1.0"
+    "Version": "0.2.0"
   },
-  "ScannedAt": "2026-10-18T23:40:32Z",
+  "ScannedAt": "2026-10-19T05:57:37Z",
   "Root": "insecure",
   "Harnesses": [
     "vscode-copilot",
     "claude-code",
+    "codex",
     "mcp"
   ],
   "Score": {
-    "Score": 20,
+    "Score": 14,
     "Grade": "F",
     "Categories": {
       "approvals": {
@@ -19,21 +20,21 @@
         "Weight": 25,
         "Score": 0,
         "Applicable": true,
-        "Findings": 16
+        "Findings": 18
       },
       "sandbox-network": {
         "Title": "Sandbox and network",
         "Weight": 20,
-        "Score": 4,
+        "Score": 0,
         "Applicable": true,
-        "Findings": 6
+        "Findings": 8
       },
       "mcp-supply-chain": {
         "Title": "MCP and supply chain",
         "Weight": 20,
-        "Score": 23,
+        "Score": 10,
         "Applicable": true,
-        "Findings": 8
+        "Findings": 10
       },
       "agent-files": {
         "Title": "Agent files and instructions",
@@ -45,9 +46,9 @@
       "secrets": {
         "Title": "Secrets",
         "Weight": 15,
-        "Score": 17,
+        "Score": 0,
         "Applicable": true,
-        "Findings": 4
+        "Findings": 7
       },
       "observability": {
         "Title": "Audit and observability",
@@ -58,10 +59,10 @@
       }
     },
     "Counts": {
-      "critical": 5,
-      "high": 18,
-      "medium": 10,
-      "low": 4,
+      "critical": 7,
+      "high": 21,
+      "medium": 13,
+      "low": 5,
       "info": 2
     }
   },
@@ -84,6 +85,48 @@
         "OWASP-ASI02",
         "OWASP-ASI05",
         "https://code.claude.com/docs/en/permissions"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-CDX-002",
+      "Title": "Codex never asks for approval",
+      "Severity": "critical",
+      "Category": "approvals",
+      "Harness": "codex",
+      "Description": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies).",
+      "Evidence": "approval_policy = \"never\" (project config); with sandbox_mode = \"danger-full-access\" (project config): no sandbox and no approval",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 5,
+        "Key": "approval_policy"
+      },
+      "Fix": "Use approval_policy = \"on-request\" (or a granular table that keeps the prompts you need), and never combine \"never\" with danger-full-access outside an isolated container or VM. Restrict the allowed values with allowed_approval_policies in requirements.toml.",
+      "References": [
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-CDX-009",
+      "Title": "Secret stored in a Codex config file",
+      "Severity": "critical",
+      "Category": "secrets",
+      "Harness": "codex",
+      "Description": "Flags literal values of mcp_servers.\u003cid\u003e.oauth.client_secret (the documentation says it is stored in the configuration and asks to keep the file private and out of version control) and model_providers.\u003cid\u003e.experimental_bearer_token (a direct bearer token, discouraged in favor of env_key). Anyone, or any agent, tool or backup, that reads the file gets the secret. The finding is critical in the project .codex/config.toml, which is usually committed. Values are always masked. Static MCP headers (http_headers) and env values are checked by AW-MCP-002.",
+      "Evidence": "mcp_servers.tracker.oauth.client_secret = FAKE…07 (29 chars) (project config)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 22,
+        "Key": "mcp_servers.tracker.oauth.client_secret"
+      },
+      "Fix": "Remove the value and rotate the secret. Use env_key for model providers, bearer_token_env_var or env_http_headers for MCP servers, and keep any client secret in the user config file only, out of version control.",
+      "References": [
+        "OWASP-ASI03",
+        "https://learn.chatgpt.com/docs/extend/mcp",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
       ],
       "Confidence": "high"
     },
@@ -238,6 +281,71 @@
         "OWASP-ASI04",
         "https://code.claude.com/docs/en/mcp",
         "https://code.claude.com/docs/en/settings-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-CDX-001",
+      "Title": "Codex runs commands without a sandbox",
+      "Severity": "high",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).",
+      "Evidence": "sandbox_mode = \"danger-full-access\" (project config)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 6,
+        "Key": "sandbox_mode"
+      },
+      "Fix": "Use sandbox_mode = \"workspace-write\" (or default_permissions = \":workspace\") and grant extra folders or network access explicitly. Keep danger-full-access for a container or VM that is already isolated, and enforce the limit with allowed_sandbox_modes or allowed_permission_profiles in requirements.toml.",
+      "References": [
+        "OWASP-ASI05",
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/permissions",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-CDX-008",
+      "Title": "Codex MCP tools run without approval",
+      "Severity": "high",
+      "Category": "approvals",
+      "Harness": "codex",
+      "Description": "Flags MCP servers whose default_tools_approval_mode is \"approve\" (every tool of the server, high) and tools whose approval_mode is \"approve\" (one tool, medium), under mcp_servers.\u003cid\u003e and plugins.\u003cplugin\u003e.mcp_servers.\u003cid\u003e. Tool calls then run without a prompt, so a prompt injection can make the agent write, send or delete data through them. The documentation lists the values auto, prompt, writes and approve and describes only writes (it prompts for tools not marked read-only); auto is the built-in fallback. It also says that a tool call that advertises a destructive annotation always requires approval, unless the tool also advertises a read annotation, without saying whether approve overrides that. That approve skips the prompt is inferred from its name and from the documentation example, so confidence is medium.",
+      "Evidence": "mcp_servers.repo-tools.default_tools_approval_mode = \"approve\": every tool of the server runs without a prompt (project config)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 15,
+        "Key": "mcp_servers.repo-tools.default_tools_approval_mode"
+      },
+      "Fix": "Use default_tools_approval_mode = \"writes\" (or \"prompt\"), and set approval_mode = \"approve\" only on read-only tools you trust, never on tools that write, send or delete.",
+      "References": [
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/extend/mcp",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "medium"
+    },
+    {
+      "RuleId": "AW-MCP-001",
+      "Title": "MCP server launched without a pinned version",
+      "Severity": "high",
+      "Category": "mcp-supply-chain",
+      "Harness": "mcp",
+      "Description": "Checks how each stdio MCP server is launched. npx (and npm exec, pnpm/yarn dlx, bunx), uvx, uv tool run and pipx run download the package when the server starts; without an exact version (or with @latest, a tag or a range) a new release, or a hijacked package, runs with the agent\u0027s privileges and no review. The same holds for docker run with an image that has no tag, the latest tag, or no digest. Wrappers such as cmd /c, sh -c and powershell -Command are unwrapped. Local paths are not checked.",
+      "Evidence": "server \u0027repo-tools\u0027: npx runs \u0027@example/mcp-repo-tools\u0027 without a pinned version (npx -y @example/mcp-repo-tools)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 12,
+        "Key": "repo-tools.command"
+      },
+      "Fix": "Pin an exact version: npx -y @scope/server@1.4.2, uvx package==1.4.2 (or package@1.4.2), pipx run --spec package==1.4.2 package, or docker run image@sha256:\u003cdigest\u003e. Review each update before you change the version.",
+      "References": [
+        "OWASP-ASI04",
+        "https://code.visualstudio.com/docs/copilot/reference/mcp-configuration",
+        "https://code.claude.com/docs/en/mcp"
       ],
       "Confidence": "high"
     },
@@ -676,6 +784,70 @@
       "Confidence": "high"
     },
     {
+      "RuleId": "AW-CDX-011",
+      "Title": "Codex live web search is enabled",
+      "Severity": "medium",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes).",
+      "Evidence": "web_search = \"live\" (project config)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 7,
+        "Key": "web_search"
+      },
+      "Fix": "Keep web_search = \"cached\" (the default), or \"indexed\", and use live search only in sessions that need it (--search). Restrict it with allowed_web_search_modes in requirements.toml.",
+      "References": [
+        "OWASP-ASI01",
+        "https://learn.chatgpt.com/docs/config-file/config-basic",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-CDX-012",
+      "Title": "Project Codex hooks run commands",
+      "Severity": "medium",
+      "Category": "mcp-supply-chain",
+      "Harness": "codex",
+      "Description": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks, project config over user config) or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.",
+      "Evidence": "hook SessionStart command: ./scripts/bootstrap.sh",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 24,
+        "Key": "hooks.SessionStart"
+      },
+      "Fix": "Review every hook command and the scripts it calls before you trust it, protect .codex/ with CODEOWNERS and required reviews, and keep personal hooks in ~/.codex/hooks.json. Set allow_managed_hooks_only = true in requirements.toml where repository hooks are not needed.",
+      "References": [
+        "OWASP-ASI04",
+        "OWASP-ASI05",
+        "https://learn.chatgpt.com/docs/hooks",
+        "https://learn.chatgpt.com/docs/config-file/config-advanced"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-SEC-009",
+      "Title": "Hard-coded password, secret or token value",
+      "Severity": "medium",
+      "Category": "secrets",
+      "Harness": "codex",
+      "Description": "A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references (${input:...}, $VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct characters) are ignored, and so are the values of the env_http_headers, bearer_token_env_var and env_vars keys of Codex MCP servers, which name environment variables (unless the value is not a valid variable name or also appears elsewhere in the file). The remaining matches may still include false positives.",
+      "Evidence": "Hard-coded value: FAKE…07 (29 chars)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 22,
+        "Key": "client_secret"
+      },
+      "Fix": "Revoke the secret and issue a new one, remove it from the file and from the Git history, and load it at run time instead: an input variable in .vscode/mcp.json (${input:...} with \"password\": true), or an environment variable set outside the repository.",
+      "References": [
+        "OWASP-ASI03",
+        "https://code.visualstudio.com/docs/copilot/customization/mcp-servers"
+      ],
+      "Confidence": "medium"
+    },
+    {
       "RuleId": "AW-VSC-006",
       "Title": "Windows exfiltration commands lack approval-required rules",
       "Severity": "medium",
@@ -802,6 +974,27 @@
         "OWASP-ASI03",
         "https://code.claude.com/docs/en/permissions",
         "https://code.claude.com/docs/en/settings-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "RuleId": "AW-CDX-007",
+      "Title": "Codex passes every environment variable, secrets included, to commands",
+      "Severity": "low",
+      "Category": "secrets",
+      "Harness": "codex",
+      "Description": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore_default_excludes = false or a filter restricts the variables.",
+      "Evidence": "shell_environment_policy.inherit = \"all\", no exclude or include filter, ignore_default_excludes not set (default true) (project config)",
+      "Location": {
+        "Path": ".codex\\config.toml",
+        "Line": 10,
+        "Key": "shell_environment_policy.inherit"
+      },
+      "Fix": "Use inherit = \"core\" (or \"none\"), set ignore_default_excludes = false, and add [shell_environment_policy.filters] entries that exclude the secrets the commands do not need.",
+      "References": [
+        "OWASP-ASI03",
+        "https://learn.chatgpt.com/docs/config-file/config-advanced",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
       ],
       "Confidence": "high"
     },
@@ -1266,6 +1459,231 @@
       "Confidence": "high"
     },
     {
+      "Id": "AW-CDX-001",
+      "Title": "Codex runs commands without a sandbox",
+      "Severity": "high",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles).",
+      "Fix": "Use sandbox_mode = \"workspace-write\" (or default_permissions = \":workspace\") and grant extra folders or network access explicitly. Keep danger-full-access for a container or VM that is already isolated, and enforce the limit with allowed_sandbox_modes or allowed_permission_profiles in requirements.toml.",
+      "References": [
+        "OWASP-ASI05",
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/permissions",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-002",
+      "Title": "Codex never asks for approval",
+      "Severity": "medium",
+      "Category": "approvals",
+      "Harness": "codex",
+      "Description": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies).",
+      "Fix": "Use approval_policy = \"on-request\" (or a granular table that keeps the prompts you need), and never combine \"never\" with danger-full-access outside an isolated container or VM. Restrict the allowed values with allowed_approval_policies in requirements.toml.",
+      "References": [
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-003",
+      "Title": "Codex workspace-write sandbox has network access",
+      "Severity": "medium",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "sandbox_workspace_write.network_access = true allows outbound network access inside the workspace-write sandbox, which keeps it off by default. Every command the agent runs without a prompt can then download code or send workspace content, credentials included, to any host. The rule checks user and project config files, with project config over user config, and is silent when the sandbox mode that applies is read-only or danger-full-access (AW-CDX-001), and when the layers use permission profiles instead: default_permissions is set and no loaded config file sets sandbox_mode, or requirements.toml has allowed_permission_profiles. The two systems do not compose, so Codex then ignores [sandbox_workspace_write]; the network of a permission profile is checked by AW-CDX-004.",
+      "Fix": "Remove network_access (default false) and approve network access per command, or use a permission profile with the network proxy and an allowlist of domains (permissions.\u003cname\u003e.network.domains).",
+      "References": [
+        "OWASP-ASI02",
+        "OWASP-ASI05",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/permissions",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-004",
+      "Title": "Codex permission profile allows unrestricted network access",
+      "Severity": "medium",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "Flags permission profiles ([permissions.\u003cname\u003e], a beta feature) whose network is enabled while the network proxy is off, with mode = \"full\", or with the global \"*\" = \"allow\" domain rule, and a network proxy ([features.network_proxy]) that allows \"*\". network.enabled = true does not start the proxy: without features.network_proxy = true (or features.network_proxy.enabled = true) in the layers where the profile applies, or a managed experimental_network.enabled = true, the documentation says commands have direct, unrestricted network access and the profile domain rules are not enforced. The documentation keeps the global allow rule for cases where public network access is intended; while the network proxy is active, the other rules limit sandboxed commands to the listed domains. The documentation lists the limited and full modes without describing what limited blocks, so confidence is medium.",
+      "Fix": "Turn the network proxy on (features.network_proxy = true), leave mode at \"limited\" and list the domains the commands need under permissions.\u003cname\u003e.network.domains (deny rules win), instead of \"*\" = \"allow\".",
+      "References": [
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/permissions",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "medium"
+    },
+    {
+      "Id": "AW-CDX-005",
+      "Title": "Codex can write to a very broad folder",
+      "Severity": "high",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "Flags writable roots and permission profile entries that give sandboxed commands write access to the home directory, a profile folder, a drive root, a network share root or the file system root: sandbox_workspace_write.writable_roots, permissions.\u003cname\u003e.filesystem entries set to \"write\" (including \":root\" and scoped \".\" entries), and broad permissions.\u003cname\u003e.workspace_roots in a profile that can write its workspace roots. The agent can then change credentials, and shell startup files, scripts and package manager hooks (targets the documentation calls sensitive), outside the project and without a prompt. Only .git, .codex, .agents and .aws folders stay protected inside writable roots.",
+      "Fix": "List only the folders the task needs (a build or cache folder of the project, for example), and keep the home directory and drive roots read-only.",
+      "References": [
+        "OWASP-ASI02",
+        "OWASP-ASI05",
+        "https://learn.chatgpt.com/docs/permissions",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-006",
+      "Title": "Codex network proxy safety check turned off",
+      "Severity": "medium",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "Flags the dangerously_* network options set to true, under [features.network_proxy] or permissions.\u003cname\u003e.network (the names are in src/Data/codex.json). dangerously_allow_all_unix_sockets bypasses the Unix socket allowlist, a broad local escape hatch (the Docker socket, for example, controls the host). dangerously_allow_non_loopback_proxy lets the sandbox proxy listen beyond localhost, where other machines can reach it. Both default to false: the documentation keeps the first for tightly controlled environments and says to leave the second unset for ordinary local development.",
+      "Fix": "Remove the dangerously_* options. Allow the Unix sockets the commands need one by one under unix_sockets, and keep the proxy on loopback addresses.",
+      "References": [
+        "OWASP-ASI05",
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/permissions",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-007",
+      "Title": "Codex passes every environment variable, secrets included, to commands",
+      "Severity": "low",
+      "Category": "secrets",
+      "Harness": "codex",
+      "Description": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore_default_excludes = false or a filter restricts the variables.",
+      "Fix": "Use inherit = \"core\" (or \"none\"), set ignore_default_excludes = false, and add [shell_environment_policy.filters] entries that exclude the secrets the commands do not need.",
+      "References": [
+        "OWASP-ASI03",
+        "https://learn.chatgpt.com/docs/config-file/config-advanced",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-008",
+      "Title": "Codex MCP tools run without approval",
+      "Severity": "high",
+      "Category": "approvals",
+      "Harness": "codex",
+      "Description": "Flags MCP servers whose default_tools_approval_mode is \"approve\" (every tool of the server, high) and tools whose approval_mode is \"approve\" (one tool, medium), under mcp_servers.\u003cid\u003e and plugins.\u003cplugin\u003e.mcp_servers.\u003cid\u003e. Tool calls then run without a prompt, so a prompt injection can make the agent write, send or delete data through them. The documentation lists the values auto, prompt, writes and approve and describes only writes (it prompts for tools not marked read-only); auto is the built-in fallback. It also says that a tool call that advertises a destructive annotation always requires approval, unless the tool also advertises a read annotation, without saying whether approve overrides that. That approve skips the prompt is inferred from its name and from the documentation example, so confidence is medium.",
+      "Fix": "Use default_tools_approval_mode = \"writes\" (or \"prompt\"), and set approval_mode = \"approve\" only on read-only tools you trust, never on tools that write, send or delete.",
+      "References": [
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/extend/mcp",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "medium"
+    },
+    {
+      "Id": "AW-CDX-009",
+      "Title": "Secret stored in a Codex config file",
+      "Severity": "high",
+      "Category": "secrets",
+      "Harness": "codex",
+      "Description": "Flags literal values of mcp_servers.\u003cid\u003e.oauth.client_secret (the documentation says it is stored in the configuration and asks to keep the file private and out of version control) and model_providers.\u003cid\u003e.experimental_bearer_token (a direct bearer token, discouraged in favor of env_key). Anyone, or any agent, tool or backup, that reads the file gets the secret. The finding is critical in the project .codex/config.toml, which is usually committed. Values are always masked. Static MCP headers (http_headers) and env values are checked by AW-MCP-002.",
+      "Fix": "Remove the value and rotate the secret. Use env_key for model providers, bearer_token_env_var or env_http_headers for MCP servers, and keep any client secret in the user config file only, out of version control.",
+      "References": [
+        "OWASP-ASI03",
+        "https://learn.chatgpt.com/docs/extend/mcp",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-010",
+      "Title": "Codex trusts a folder that is too broad",
+      "Severity": "high",
+      "Category": "approvals",
+      "Harness": "codex",
+      "Description": "projects.\u003cpath\u003e.trust_level = \"trusted\" makes Codex load the project .codex/ layers of that folder: its config, which can change the sandbox, the approvals and the MCP servers, its hooks and its rules. Trusting the home directory, a profile folder, a drive root or the file system root extends that trust to whatever is placed there, and a session started there can work on every repository and credential below it. Whether trust also covers sub-folders is not documented, so confidence is medium. User config and profile files are checked.",
+      "Fix": "Remove the broad entry (or set trust_level = \"untrusted\") and trust each project folder on its own. Do not start Codex from the home directory or a drive root.",
+      "References": [
+        "OWASP-ASI03",
+        "OWASP-ASI04",
+        "https://learn.chatgpt.com/docs/config-file/config-basic",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "medium"
+    },
+    {
+      "Id": "AW-CDX-011",
+      "Title": "Codex live web search is enabled",
+      "Severity": "medium",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes).",
+      "Fix": "Keep web_search = \"cached\" (the default), or \"indexed\", and use live search only in sessions that need it (--search). Restrict it with allowed_web_search_modes in requirements.toml.",
+      "References": [
+        "OWASP-ASI01",
+        "https://learn.chatgpt.com/docs/config-file/config-basic",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-012",
+      "Title": "Project Codex hooks run commands",
+      "Severity": "medium",
+      "Category": "mcp-supply-chain",
+      "Harness": "codex",
+      "Description": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks, project config over user config) or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false.",
+      "Fix": "Review every hook command and the scripts it calls before you trust it, protect .codex/ with CODEOWNERS and required reviews, and keep personal hooks in ~/.codex/hooks.json. Set allow_managed_hooks_only = true in requirements.toml where repository hooks are not needed.",
+      "References": [
+        "OWASP-ASI04",
+        "OWASP-ASI05",
+        "https://learn.chatgpt.com/docs/hooks",
+        "https://learn.chatgpt.com/docs/config-file/config-advanced"
+      ],
+      "Confidence": "high"
+    },
+    {
+      "Id": "AW-CDX-013",
+      "Title": "Project Codex rules allow commands outside the sandbox",
+      "Severity": "medium",
+      "Category": "mcp-supply-chain",
+      "Harness": "codex",
+      "Description": "Lists the prefix_rule() entries of the project .codex/rules/*.rules files whose decision is \"allow\", explicitly or by default (allow is the default decision). A matching command runs outside the sandbox without a prompt, and the rules load as soon as the project is trusted, so anyone who can change the repository can widen what the agent runs unattended. The Starlark files are not evaluated: calls are found by name, outside comments, so computed patterns are not resolved and confidence is medium. Rules are an experimental feature; when several rules match, the most restrictive decision wins.",
+      "Fix": "Review every allow rule of the repository, keep allow rules for narrow, read-only commands, prefer decision = \"prompt\", and protect .codex/ with CODEOWNERS and required reviews. Keep personal rules in ~/.codex/rules/.",
+      "References": [
+        "OWASP-ASI04",
+        "OWASP-ASI02",
+        "https://learn.chatgpt.com/docs/agent-configuration/rules",
+        "https://learn.chatgpt.com/docs/config-file/config-advanced"
+      ],
+      "Confidence": "medium"
+    },
+    {
+      "Id": "AW-CDX-014",
+      "Title": "Codex profile weakens the sandbox or the approvals",
+      "Severity": "medium",
+      "Category": "sandbox-network",
+      "Harness": "codex",
+      "Description": "Checks the profile files (\u003ccodex home\u003e/\u003cname\u003e.config.toml, selected with --profile \u003cname\u003e) for settings that weaken the defaults: sandbox_mode = \"danger-full-access\", default_permissions = \":danger-full-access\", approval_policy = \"never\", sandbox_workspace_write.network_access = true and web_search = \"live\". One --profile flag then switches a session to that configuration. A profile is evaluated with the layers it applies with, in the documented precedence project config \u003e profile \u003e user config: the config.toml of its Codex home below it, alone and under each project .codex/config.toml. A profile setting counts only where it applies (sandbox_mode in any of these files takes precedence over default_permissions, and [sandbox_workspace_write] is ignored with permission profiles). The finding is high when, with the profile, neither the sandbox nor the approvals remain, whichever of these files removes each one (the evidence names the other file); it is not when requirements.toml forbids the value. Legacy [profiles.\u003cname\u003e] tables of the user config.toml are reported as low: Codex 0.134.0 and later no longer read them.",
+      "Fix": "Remove the weakening settings from the profile, or delete the profile, and run sessions that need broad access only inside an isolated container or VM. Delete legacy [profiles.\u003cname\u003e] tables from config.toml.",
+      "References": [
+        "OWASP-ASI02",
+        "OWASP-ASI05",
+        "https://learn.chatgpt.com/docs/config-file/config-advanced",
+        "https://learn.chatgpt.com/docs/config-file/config-basic",
+        "https://learn.chatgpt.com/docs/agent-approvals-security",
+        "https://learn.chatgpt.com/docs/config-file/config-reference"
+      ],
+      "Confidence": "high"
+    },
+    {
       "Id": "AW-MCP-001",
       "Title": "MCP server launched without a pinned version",
       "Severity": "high",
@@ -1472,7 +1890,7 @@
       "Severity": "medium",
       "Category": "secrets",
       "Harness": "generic",
-      "Description": "A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references (${input:...}, $VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct characters) are ignored; the remaining matches may still include false positives.",
+      "Description": "A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references (${input:...}, $VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct characters) are ignored, and so are the values of the env_http_headers, bearer_token_env_var and env_vars keys of Codex MCP servers, which name environment variables (unless the value is not a valid variable name or also appears elsewhere in the file). The remaining matches may still include false positives.",
       "Fix": "Revoke the secret and issue a new one, remove it from the file and from the Git history, and load it at run time instead: an input variable in .vscode/mcp.json (${input:...} with \"password\": true), or an environment variable set outside the repository.",
       "References": [
         "OWASP-ASI03",
@@ -1931,7 +2349,7 @@
       "Markdown",
       "Html"
     ],
-    "OutFile": "airworthy-insecure",
+    "OutFile": ".\\examples\\airworthy-insecure",
     "MinSeverity": "info",
     "FailOn": null,
     "Redact": true,

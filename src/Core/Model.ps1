@@ -1,7 +1,7 @@
 # Data model: constants, rule registry and findings.
 
 $script:AwToolName    = 'Airworthy'
-$script:AwToolVersion = '0.1.0'
+$script:AwToolVersion = '0.2.0'
 
 $script:AwSeverities     = @('critical','high','medium','low','info')
 $script:AwSeverityWeight = @{ critical = 40; high = 20; medium = 8; low = 3; info = 0 }
@@ -14,9 +14,9 @@ $script:AwCategories = [ordered]@{
     'secrets'          = @{ Title = 'Secrets';                       Weight = 15 }
     'observability'    = @{ Title = 'Audit and observability';       Weight = 5 }
 }
-$script:AwHarnesses   = @('vscode-copilot','claude-code','copilot-cli','mcp','generic')
+$script:AwHarnesses   = @('vscode-copilot','claude-code','copilot-cli','codex','mcp','generic')
 $script:AwConfidences = @('high','medium','low')
-$script:AwRuleIdPattern = '^AW-(CORE|VSC|AGT|SEC|MCP|CC|CLI)-[0-9]{3}$'
+$script:AwRuleIdPattern = '^AW-(CORE|VSC|AGT|SEC|MCP|CC|CLI|CDX)-[0-9]{3}$'
 
 # The only non-ASCII characters the code needs, defined once (see CONTRIBUTING.md, Antivirus hygiene).
 $script:AwEllipsis = [string][char]0x2026
@@ -34,7 +34,7 @@ $script:AwCoreRules = @{
     'AW-CORE-001' = [pscustomobject]@{
         Id = 'AW-CORE-001'; Title = 'Unreadable or invalid file'; Severity = 'info'
         Category = 'observability'; Harness = 'generic'
-        Description = 'A configuration file could not be read or parsed (invalid JSON or YAML, too large, or a link that leaves the analyzed root). Its content was not analyzed, so the score may miss issues in it.'
+        Description = 'A configuration file could not be read or parsed (invalid JSON, TOML or YAML, too large, or a link that leaves the analyzed root). Its content was not analyzed, so the score may miss issues in it.'
         Fix = 'Fix the syntax of the file, or check why it cannot be read. Files larger than 2 MB and links outside the analyzed root are skipped on purpose.'
         References = [string[]]@(); Confidence = 'high'
     }

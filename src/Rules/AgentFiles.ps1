@@ -200,7 +200,8 @@ function Get-AwAgtPathHarness {
     }
     $vs = $Ctx.VSCode
     foreach ($a in @(@($vs.UserSettings, $vs.WorkspaceSettings) + @($vs.WorkspaceFiles) + @($Ctx.McpFiles) +
-                     @($Ctx.Hooks) + @($Ctx.ClaudeSettings) + @($Ctx.CopilotCli))) {
+                     @($Ctx.Hooks) + @($Ctx.ClaudeSettings) + @($Ctx.CopilotCli) +
+                     @(Get-AwMemberValue $Ctx 'Codex') + @(Get-AwMemberValue $Ctx 'CodexRules'))) {
         if ($a -and [string]::Equals($a.Path, $Path, $script:AwPathComparison) -and $script:AwHarnesses -ccontains $a.Harness) { return $a.Harness }
     }
     return 'generic'

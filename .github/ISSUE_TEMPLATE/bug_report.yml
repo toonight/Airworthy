@@ -15,7 +15,7 @@ body:
     attributes:
       label: Airworthy version
       description: Shown at the top of the console report, or by `(Import-Module ./Airworthy.psd1 -PassThru).Version`.
-      placeholder: "0.1.0"
+      placeholder: "0.2.0"
     validations:
       required: true
   - type: dropdown
@@ -42,6 +42,7 @@ body:
         - VS Code GitHub Copilot (custom agents, agent mode settings)
         - Claude Code
         - Copilot CLI
+        - Codex CLI
         - MCP servers
         - Secrets
         - Scoring and grade

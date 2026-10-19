@@ -52,7 +52,7 @@ function New-TestResult {
         $categories[$id] = [ordered]@{ Title = "Category $id"; Score = 50; Applicable = ($id -ne 'agent-files'); Findings = 1 }
     }
     [pscustomobject]@{
-        Tool      = [ordered]@{ Name = 'Airworthy'; Version = '0.1.0' }
+        Tool      = [ordered]@{ Name = 'Airworthy'; Version = '0.2.0' }
         ScannedAt = '2026-10-18T12:00:00Z'
         Root      = $RootPath
         Harnesses = [string[]]@('vscode-copilot', 'mcp', $Text)
@@ -76,7 +76,7 @@ function New-EmptyResult {
     $categories = [ordered]@{}
     foreach ($id in $CategoryIds) { $categories[$id] = [ordered]@{ Title = "Category $id"; Score = 100; Applicable = $false; Findings = 0 } }
     [pscustomobject]@{
-        Tool      = [ordered]@{ Name = 'Airworthy'; Version = '0.1.0' }
+        Tool      = [ordered]@{ Name = 'Airworthy'; Version = '0.2.0' }
         ScannedAt = '2026-10-18T12:00:00Z'
         Root      = $Root
         Harnesses = [string[]]@()
@@ -372,7 +372,7 @@ try {
             Assert-Equal '.mcp.json' $d['errors'][0]['path']
             Assert-Equal 'high' $d['options']['failOn']
             Assert-Equal 1 $d['options']['exitCode']
-            Assert-Equal '0.1.0' $d['tool']['version']
+            Assert-Equal '0.2.0' $d['tool']['version']
         }
         It 'keeps the order of the findings' {
             Assert-Equal 'AW-VSC-001,AW-MCP-001,AW-SEC-001,AW-CORE-001' ((@($d['findings']) | ForEach-Object { $_['ruleId'] }) -join ',')

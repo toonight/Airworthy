@@ -350,7 +350,8 @@ try {
             $r = Invoke-Airworthy -Path (Join-Path $fixtures 'insecure') -NoUserProfile -PassThru -Quiet
             $ids = @($r.Findings | ForEach-Object { $_.RuleId })
             foreach ($id in @('AW-MCP-001', 'AW-MCP-002', 'AW-MCP-003')) { Assert-Contains $ids $id }
-            Assert-Equal 3 @($r.Findings | Where-Object { $_.RuleId -eq 'AW-MCP-001' }).Count
+            Assert-Equal 4 @($r.Findings | Where-Object { $_.RuleId -eq 'AW-MCP-001' }).Count
+            Assert-Equal 1 @($r.Findings | Where-Object { $_.RuleId -eq 'AW-MCP-001' -and $_.Location.Path -like '*\.codex\config.toml' }).Count
             Assert-NotMatch (($r.Findings | ForEach-Object { $_.Evidence }) -join "`n") 'FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE1234'
             $h = Invoke-Airworthy -Path (Join-Path $fixtures 'hardened') -NoUserProfile -PassThru -Quiet
             Assert-Equal 0 @($h.Findings | Where-Object { $_.RuleId -like 'AW-MCP-*' }).Count

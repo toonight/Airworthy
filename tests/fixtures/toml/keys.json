@@ -1,0 +1,21 @@
+{
+  "key": "value",
+  "bare_key": "value",
+  "bare-key": "value",
+  "1234": "value",
+  "127.0.0.1": "value",
+  "character encoding": "value",
+  "\u028e\u01dd\u029e": "value",
+  "key2": "value",
+  "quoted \"value\"": "value",
+  "": "blank",
+  "name": "Orange",
+  "physical": { "color": "orange", "shape": "round" },
+  "site": { "example.com": true },
+  "fruit": { "name": "banana", "color": "yellow", "flavor": "banana" },
+  "3": { "14159": "pi" },
+  "apple": { "type": "fruit", "skin": "thin", "color": "red" },
+  "orange": { "type": "fruit", "skin": "thick", "color": "orange" },
+  "Case": "upper",
+  "case": "lower"
+}

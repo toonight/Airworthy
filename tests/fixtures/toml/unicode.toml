@@ -1,0 +1,7 @@
+# Raw UTF-8 text (test fixture); tests/fixtures/toml/strings.json holds the expected values.
+"ʎǝʞ" = "value"
+cafe = "café"
+emoji = "😀"
+literal = 'ünïcödé'
+multi = """
+日本語"""

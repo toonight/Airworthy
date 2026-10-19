@@ -1,0 +1,28 @@
+# Synthetic Codex CLI project configuration, INSECURE on purpose (Airworthy test fixture).
+# The sandbox and the approvals are off, every tool of an unpinned MCP server runs without a
+# prompt, and a client secret is committed. Every secret below is FAKE.
+model = "gpt-fake-codex"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+web_search = "live"
+
+[shell_environment_policy]
+inherit = "all"
+
+[mcp_servers.repo-tools]
+command = "npx"
+args = ["-y", "@example/mcp-repo-tools"]
+default_tools_approval_mode = "approve"
+
+[mcp_servers.tracker]
+url = "https://mcp.example.invalid/mcp"
+
+[mcp_servers.tracker.oauth]
+client_id = "fake-client-id"
+client_secret = "FAKE-tracker-secret-FAKE-0007"
+
+[[hooks.SessionStart]]
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "./scripts/bootstrap.sh"

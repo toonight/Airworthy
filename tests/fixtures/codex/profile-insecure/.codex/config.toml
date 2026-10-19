@@ -1,0 +1,60 @@
+# Synthetic Codex CLI user configuration, INSECURE on purpose (Airworthy test fixture).
+# Every secret below is FAKE.
+model = "gpt-fake-codex"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+web_search = "live"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["~", "/tmp/build-cache"]
+
+[shell_environment_policy]
+inherit = "all"
+
+[features.network_proxy]
+enabled = true
+dangerously_allow_non_loopback_proxy = true
+
+[permissions.wide]
+extends = ":workspace"
+
+[permissions.wide.filesystem]
+":root" = "write"
+
+[permissions.wide.network]
+enabled = true
+mode = "full"
+
+[projects.'C:\Users\FAKEUSER']
+trust_level = "trusted"
+
+[projects."/home/dev/project"]
+trust_level = "trusted"
+
+[model_providers.fake]
+name = "Fake provider"
+base_url = "https://llm.example.invalid/v1"
+experimental_bearer_token = "FAKE-provider-bearer-FAKE-0002"
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+default_tools_approval_mode = "approve"
+
+[mcp_servers.github.env]
+GITHUB_PERSONAL_ACCESS_TOKEN = "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE12"
+
+[mcp_servers.docs]
+url = "http://mcp.example.invalid/mcp"
+http_headers = { Authorization = "Bearer FAKE-docs-bearer-FAKE-0003" }
+
+[mcp_servers.docs.oauth]
+client_id = "fake-client"
+client_secret = "FAKE-oauth-secret-FAKE-0001"
+
+[mcp_servers.docs.tools.search]
+approval_mode = "approve"
+
+[profiles.legacy]
+approval_policy = "never"

@@ -223,14 +223,28 @@ function Add-AwJsonValue {
     if ($isMap) {
         $names = New-Object System.Collections.Generic.List[string]
         $values = New-Object System.Collections.Generic.List[object]
-        if ($Value -is [System.Collections.IDictionary]) {
+        if ($Value -is [System.Collections.Hashtable]) {
+            # Unordered dictionaries get their key names sorted, so that the output is stable, and
+            # each value is then read by its key. Sorting names and values as two parallel arrays is
+            # not safe: when every value has the same type, PowerShell passes the sort a converted
+            # copy of the values, so only the names move.
+            $keysByName = New-Object 'System.Collections.Generic.Dictionary[string,System.Collections.Generic.List[object]]' -ArgumentList ([StringComparer]::Ordinal)
+            foreach ($k in $Value.Keys) {
+                $name = [string]$k
+                if (-not $keysByName.ContainsKey($name)) { $keysByName[$name] = New-Object System.Collections.Generic.List[object] }
+                $keysByName[$name].Add($k)
+            }
+            $sorted = [string[]]@($keysByName.Keys)
+            [Array]::Sort($sorted, [StringComparer]::Ordinal)
+            foreach ($name in $sorted) {
+                foreach ($k in $keysByName[$name]) { $names.Add($name); $values.Add($Value.get_Item($k)) }
+            }
+        } elseif ($Value -is [System.Collections.IDictionary]) {
             foreach ($e in $Value.GetEnumerator()) { $names.Add([string]$e.Key); $values.Add($e.Value) }
         } else {
             foreach ($p in $Value.PSObject.Properties) { $names.Add($p.Name); $values.Add($p.Value) }
         }
         $n = $names.ToArray(); $v = $values.ToArray()
-        # Unordered dictionaries get their keys sorted, so that the output is stable.
-        if ($Value -is [System.Collections.Hashtable]) { [Array]::Sort($n, $v, [StringComparer]::Ordinal) }
         if ($n.Count -eq 0) { [void]$Builder.Append('{}'); return }
         [void]$Builder.Append('{')
         for ($i = 0; $i -lt $n.Count; $i++) {

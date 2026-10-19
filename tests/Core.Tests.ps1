@@ -98,15 +98,16 @@ Describe 'Module' {
         $errors = & $aw { @($script:AwLoadErrors) }
         Assert-Equal 0 @($errors).Count (($errors | ForEach-Object { "$($_.File): $($_.Message)" }) -join '; ')
     }
-    It 'has a manifest for Windows PowerShell 5.1, version 0.1.0' {
+    It 'has a manifest for Windows PowerShell 5.1, version 0.2.0' {
         $m = Import-PowerShellDataFile (Join-Path (Split-Path -Parent $PSScriptRoot) 'Airworthy.psd1')
-        Assert-Equal '0.1.0' $m.ModuleVersion
+        Assert-Equal '0.2.0' $m.ModuleVersion
         Assert-Equal '5.1' $m.PowerShellVersion
         Assert-Equal @('Invoke-Airworthy') @($m.FunctionsToExport)
         Assert-Equal 'Airworthy.psm1' $m.RootModule
         Assert-Equal 'Toonight' $m.Author
         Assert-Equal 'https://github.com/toonight/Airworthy' $m.PrivateData.PSData.ProjectUri
-        Assert-Equal '0.1.0' (& $aw { $script:AwToolVersion })
+        foreach ($tag in @('vscode', 'claude-code', 'copilot-cli', 'codex', 'mcp')) { Assert-Contains $m.PrivateData.PSData.Tags $tag }
+        Assert-Equal '0.2.0' (& $aw { $script:AwToolVersion })
         Assert-Equal 'Airworthy' (& $aw { $script:AwToolName })
     }
     It 'exposes the contract constants' {
@@ -115,7 +116,7 @@ Describe 'Module' {
         Assert-Equal 40 $c.W.critical; Assert-Equal 20 $c.W.high; Assert-Equal 8 $c.W.medium; Assert-Equal 3 $c.W.low; Assert-Equal 0 $c.W.info
         Assert-Equal @('approvals', 'sandbox-network', 'mcp-supply-chain', 'agent-files', 'secrets', 'observability') @($c.Cat.Keys)
         Assert-Equal @(25, 20, 20, 15, 15, 5) @($c.Cat.Values | ForEach-Object { $_.Weight })
-        Assert-Equal @('vscode-copilot', 'claude-code', 'copilot-cli', 'mcp', 'generic') $c.H
+        Assert-Equal @('vscode-copilot', 'claude-code', 'copilot-cli', 'codex', 'mcp', 'generic') $c.H
     }
 }
 
@@ -660,12 +661,12 @@ Describe 'Settings: effective values from the fixtures' {
 Describe 'Discovery: shared fixtures' {
     It 'returns every contract property for insecure (no user profile)' {
         $ctx = Get-TestContext $insecure
-        Assert-Equal @('Root', 'IsWindows', 'UserProfile', 'Harnesses', 'VSCode', 'McpFiles', 'AgentFiles', 'Hooks', 'ClaudeSettings', 'CopilotCli', 'TextFiles', 'Errors') @($ctx.PSObject.Properties.Name)
+        Assert-Equal @('Root', 'IsWindows', 'UserProfile', 'Harnesses', 'VSCode', 'McpFiles', 'AgentFiles', 'Hooks', 'ClaudeSettings', 'CopilotCli', 'Codex', 'CodexRules', 'TextFiles', 'Errors') @($ctx.PSObject.Properties.Name)
         Assert-Equal @('UserSettings', 'WorkspaceSettings', 'WorkspaceFiles', 'Effective') @($ctx.VSCode.PSObject.Properties.Name)
         Assert-Equal ([System.IO.Path]::GetFullPath($insecure)) $ctx.Root
         Assert-True ($ctx.IsWindows -is [bool])
         Assert-Equal $null $ctx.UserProfile
-        Assert-Equal @('vscode-copilot', 'claude-code', 'mcp') $ctx.Harnesses
+        Assert-Equal @('vscode-copilot', 'claude-code', 'codex', 'mcp') $ctx.Harnesses
         Assert-Equal $null $ctx.VSCode.UserSettings
         Assert-Equal 0 @($ctx.VSCode.WorkspaceFiles).Count
         Assert-True ($ctx.VSCode.WorkspaceFiles -is [array])
@@ -684,7 +685,7 @@ Describe 'Discovery: shared fixtures' {
     }
     It 'normalizes the MCP servers of each client' {
         $mcp = @((Get-TestContext $insecure).McpFiles)
-        Assert-Equal 2 $mcp.Count
+        Assert-Equal 3 $mcp.Count
         $vs = $mcp | Where-Object { $_.Path -like '*\.vscode\mcp.json' }
         Assert-Equal 'vscode-copilot' $vs.Harness; Assert-Equal 'workspace' $vs.Scope
         Assert-Equal @('fetch-anything', 'remote-tools') @($vs.Data.Servers.Keys | Sort-Object)
@@ -692,6 +693,10 @@ Describe 'Discovery: shared fixtures' {
         $cc = $mcp | Where-Object { $_.Path -like '*\.mcp.json' }
         Assert-Equal 'claude-code' $cc.Harness; Assert-Equal 'project' $cc.Scope
         Assert-Equal @('git-tools', 'shell') @($cc.Data.Servers.Keys | Sort-Object)
+        $cdx = $mcp | Where-Object { $_.Path -like '*\.codex\config.toml' }
+        Assert-Equal 'codex' $cdx.Harness; Assert-Equal 'project' $cdx.Scope
+        Assert-Equal @('repo-tools', 'tracker') @($cdx.Data.Servers.Keys | Sort-Object)
+        Assert-Equal 'npx' $cdx.Data.Servers['repo-tools']['command']
     }
     It 'finds agent files with their kind and frontmatter' {
         $agents = @((Get-TestContext $insecure).AgentFiles)
@@ -713,7 +718,7 @@ Describe 'Discovery: shared fixtures' {
     }
     It 'lists text files as absolute paths inside the root' {
         $ctx = Get-TestContext $insecure
-        Assert-Equal 6 @($ctx.TextFiles).Count
+        Assert-Equal 7 @($ctx.TextFiles).Count
         foreach ($t in $ctx.TextFiles) {
             Assert-True ([System.IO.Path]::IsPathRooted($t)) $t
             Assert-True ($t.StartsWith($ctx.Root, [StringComparison]::OrdinalIgnoreCase)) $t
@@ -727,7 +732,7 @@ Describe 'Discovery: shared fixtures' {
         Assert-Equal 'user' $ctx.VSCode.UserSettings.Scope
         Assert-Equal @('project', 'user') @($ctx.ClaudeSettings | ForEach-Object { $_.Scope })
         Assert-Equal 1 @($ctx.Hooks).Count
-        Assert-Equal 8 @($ctx.TextFiles).Count
+        Assert-Equal 9 @($ctx.TextFiles).Count
     }
     It 'finds Copilot hooks (hardened)' {
         $ctx = Get-TestContext $hardened
@@ -1034,10 +1039,10 @@ Describe 'Engine: result contract' {
         } finally { Restore-Registry }
         Assert-Equal @('Tool', 'ScannedAt', 'Root', 'Harnesses', 'Score', 'Findings', 'Rules', 'Errors', 'Options', 'ExitCode') @($r.PSObject.Properties.Name)
         Assert-Equal 'Airworthy' $r.Tool.Name
-        Assert-Equal '0.1.0' $r.Tool.Version
+        Assert-Equal '0.2.0' $r.Tool.Version
         Assert-Match $r.ScannedAt '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
         Assert-Equal ([System.IO.Path]::GetFullPath($insecure)) $r.Root
-        Assert-Equal @('vscode-copilot', 'claude-code', 'mcp') $r.Harnesses
+        Assert-Equal @('vscode-copilot', 'claude-code', 'codex', 'mcp') $r.Harnesses
         Assert-Equal 100 $r.Score.Score
         Assert-Equal 'A' $r.Score.Grade
         Assert-True ($r.Findings -is [array]); Assert-Equal 0 $r.Findings.Count

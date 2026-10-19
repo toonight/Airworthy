@@ -1,0 +1,18 @@
+# Synthetic Codex CLI project configuration, HARDENED (Airworthy test fixture): sandboxed commands
+# without network access, approval prompts on request, cached web search, a filtered environment
+# and a pinned MCP server whose tools all prompt.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+
+[sandbox_workspace_write]
+network_access = false
+
+[shell_environment_policy]
+inherit = "core"
+ignore_default_excludes = false
+
+[mcp_servers.docs]
+command = "npx"
+args = ["--yes", "@example/mcp-server-docs@1.4.2"]
+default_tools_approval_mode = "prompt"

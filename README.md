@@ -10,7 +10,7 @@
   <a href="#quick-start"><img alt="PowerShell 5.1 | 7" src="https://img.shields.io/badge/PowerShell-5.1%20%7C%207-5391fe?style=flat-square&amp;labelColor=1f2937"></a>
   <a href="#quick-start"><img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square&amp;labelColor=1f2937"></a>
   <a href="#privacy"><img alt="100% offline" src="https://img.shields.io/badge/100%25-offline-16a34a?style=flat-square&amp;labelColor=1f2937"></a>
-  <a href="#what-it-checks"><img alt="71 rules" src="https://img.shields.io/badge/rules-71-8b5cf6?style=flat-square&amp;labelColor=1f2937"></a>
+  <a href="#what-it-checks"><img alt="85 rules" src="https://img.shields.io/badge/rules-85-8b5cf6?style=flat-square&amp;labelColor=1f2937"></a>
   <a href="#use-in-ci"><img alt="SARIF 2.1.0" src="https://img.shields.io/badge/SARIF-2.1.0-0ea5e9?style=flat-square&amp;labelColor=1f2937"></a>
   <a href="https://github.com/toonight/Airworthy/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/toonight/Airworthy/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -34,16 +34,16 @@
 
 ## About
 
-AI coding agents such as GitHub Copilot in VS Code, Claude Code and Copilot CLI do what their
-**harness** lets them do. The harness is the configuration around the model: tool approvals,
+AI coding agents such as GitHub Copilot in VS Code, Claude Code, Copilot CLI and Codex CLI do what
+their **harness** lets them do. The harness is the configuration around the model: tool approvals,
 terminal allow rules, the sandbox, network access, MCP servers, custom agents, instruction and
 prompt files, and hooks. It is spread across a dozen files in the repository and in your user
 profile, each with its own precedence rules. One `"chat.tools.global.autoApprove": true`, one
-`Bash(*)` allow rule or one unpinned `npx` MCP server is enough to turn a prompt injection into
-code execution on your machine.
+`Bash(*)` allow rule, one `sandbox_mode = "danger-full-access"` or one unpinned `npx` MCP server
+is enough to turn a prompt injection into code execution on your machine.
 
 **Airworthy** is an offline static analyzer for these *custom* harness configurations. It finds
-the files, works out the settings that actually apply, runs 71 security rules and reports a
+the files, works out the settings that actually apply, runs 85 security rules and reports a
 score, a grade, and each finding with its evidence and a concrete fix, as console text, JSON,
 SARIF 2.1.0, Markdown or a self-contained HTML report. The name is the question it answers: is
 this agent setup worthy of being trusted to run?
@@ -52,7 +52,7 @@ It is built for:
 
 - **developers** who want to know what their agent may do without asking, before they let it run;
 - **security and platform teams** who review or standardize agent configurations across repositories;
-- **maintainers and reviewers** of repositories that ship `.vscode/`, `.claude/`, `.github/agents/` or `.mcp.json` files;
+- **maintainers and reviewers** of repositories that ship `.vscode/`, `.claude/`, `.codex/`, `.github/agents/` or `.mcp.json` files;
 - **CI pipelines** that should fail, or raise code scanning alerts, when a risky agent setting lands.
 
 ## Why Airworthy?
@@ -72,7 +72,8 @@ It is built for:
     <td width="33%" valign="top">
       <h3>🧭 Effective permissions</h3>
       Resolves what actually applies, layer by layer: Claude Code managed policy &gt; local &gt;
-      project &gt; user; VS Code default &lt; user &lt; workspace file &lt; workspace; and the
+      project &gt; user; VS Code default &lt; user &lt; workspace file &lt; workspace; Codex
+      project &gt; profile &gt; user config, within the limits of <code>requirements.toml</code>; and the
       tools of a prompt file over those of its custom agent.
     </td>
   </tr>
@@ -122,26 +123,30 @@ folder instead, give the project folder as the path:
 <summary><b>Sample console output</b> (the <code>insecure</code> test fixture, with <code>-NoUserProfile -Redact</code>)</summary>
 
 ```text
-Airworthy 0.1.0  agent harness security score
+Airworthy 0.2.0  agent harness security score
   Root       insecure
-  Harnesses  vscode-copilot, claude-code, mcp
-  Score      20/100  grade F
-  Findings   5 critical, 18 high, 10 medium, 4 low, 2 info
+  Harnesses  vscode-copilot, claude-code, codex, mcp
+  Score      14/100  grade F
+  Findings   7 critical, 21 high, 13 medium, 5 low, 2 info
 
 Categories
-  Approvals and terminal        [--------------------]   0  16 findings
-  Sandbox and network           [#-------------------]   4  6 findings
-  MCP and supply chain          [#####---------------]  23  8 findings
+  Approvals and terminal        [--------------------]   0  18 findings
+  Sandbox and network           [--------------------]   0  8 findings
+  MCP and supply chain          [##------------------]  10  10 findings
   Agent files and instructions  [#########-----------]  44  5 findings
-  Secrets                       [###-----------------]  17  4 findings
+  Secrets                       [--------------------]   0  7 findings
   Audit and observability       [####################] 100
 
 Findings
-  CRITICAL (5)
+  CRITICAL (7)
     AW-CC-003  Every shell command is pre-approved
         .claude\settings.json:5
         Evidence: permissions.allow contains 'Bash(*)' in project settings: every Bash command runs without approval
         Fix: Replace broad rules with exact commands or narrow prefixes, for example "Bash(npm run test *)" and "Bash(git status)", ...
+    AW-CDX-002  Codex never asks for approval
+        .codex\config.toml:5
+        Evidence: approval_policy = "never" (project config); with sandbox_mode = "danger-full-access" (project config): no sandbox and no approval
+        Fix: Use approval_policy = "on-request" (or a granular table that keeps the prompts you need), ...
     ...
 ```
 
@@ -187,7 +192,7 @@ Pass several formats as a list (`-Format Json, Sarif`).
 
 ## What it checks
 
-Airworthy analyzes four harness families, plus files any agent reads. It looks only at the
+Airworthy analyzes five harness families, plus files any agent reads. It looks only at the
 locations below, not at the whole repository tree.
 
 | Harness | In the analyzed folder | In the user profile (skipped with `-NoUserProfile`) |
@@ -195,36 +200,37 @@ locations below, not at the whole repository tree.
 | **VS Code GitHub Copilot** (custom agents and agent mode) | `.vscode/settings.json`, `*.code-workspace`, `.vscode/mcp.json`, `.github/agents/*.agent.md`, `.github/chatmodes/*.chatmode.md`, `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, `.github/prompts/*.prompt.md`, `.github/hooks/*.json` | VS Code and VS Code Insiders `User/settings.json` and `User/mcp.json` |
 | **Claude Code** | `.claude/settings.json`, `.claude/settings.local.json`, `.claude/agents/*.md`, `CLAUDE.md`, `.mcp.json` | `~/.claude/settings.json`, the MCP servers of `~/.claude.json`, and the machine-wide `managed-settings.json` when present |
 | **Copilot CLI** | `.github/copilot/settings.json`, `.github/copilot/settings.local.json`, `.github/mcp.json` | `~/.copilot/config.json`, `~/.copilot/settings.json`, `~/.copilot/mcp-config.json`, `~/.copilot/agents/*.agent.md`, `~/.copilot/hooks/*.json` |
+| **Codex CLI** | `.codex/config.toml` (with its MCP servers and hooks), `.codex/hooks.json`, `.codex/rules/*.rules` | `~/.codex/config.toml` and, when `CODEX_HOME` is set, `$CODEX_HOME/config.toml`; the profile files `<name>.config.toml` of those folders; the machine-wide `requirements.toml` when present |
 | **Any agent** | `AGENTS.md`, and `.env*` files at the root (secret scan) | |
 
 The rules fall into six weighted categories. The severities below are rule defaults: some rules
 raise or lower the severity of a finding from its context (for example `AW-VSC-003` becomes
 critical on Windows when the agent sandbox is not on).
 
-### Approvals and terminal (weight 25, 17 rules)
+### Approvals and terminal (weight 25, 20 rules)
 
 | Severity | What Airworthy flags | Rules |
 | --- | --- | --- |
 | ![critical](https://img.shields.io/badge/critical-d1242f?style=flat-square) | Global tool auto-approval in VS Code, a catch-all terminal allow rule, Claude Code starting in `bypassPermissions` mode, an allow rule that pre-approves every shell command | `AW-VSC-001` `AW-VSC-004` `AW-CC-001` `AW-CC-003` |
-| ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | A default permission level that skips approvals, terminal auto-approval, risky commands (downloaders, inline interpreters, `git push`, `rm -rf`) auto-approved, built-in approval rules ignored, edit auto-approval over agent control files, Copilot CLI trusting a drive root or the home folder | `AW-VSC-002` `AW-VSC-003` `AW-VSC-005` `AW-VSC-007` `AW-VSC-009` `AW-CLI-001` |
-| ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | Claude Code starting in a mode that auto-approves edits, Windows download and exfiltration commands without approval-required rules, terminal prompts answered automatically | `AW-CC-002` `AW-VSC-006` `AW-VSC-008` |
+| ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | A default permission level that skips approvals, terminal auto-approval, risky commands (downloaders, inline interpreters, `git push`, `rm -rf`) auto-approved, built-in approval rules ignored, edit auto-approval over agent control files, Copilot CLI or Codex trusting a drive root or the home folder, Codex MCP tools that run without a prompt | `AW-VSC-002` `AW-VSC-003` `AW-VSC-005` `AW-VSC-007` `AW-VSC-009` `AW-CLI-001` `AW-CDX-008` `AW-CDX-010` |
+| ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | Claude Code starting in a mode that auto-approves edits, Windows download and exfiltration commands without approval-required rules, terminal prompts answered automatically, Codex never asking for approval (critical when its sandbox is off too) | `AW-CC-002` `AW-VSC-006` `AW-VSC-008` `AW-CDX-002` |
 | ![low](https://img.shields.io/badge/low-3b82f6?style=flat-square) | Terminal risk assessment turned off, an agent request limit above 100 | `AW-VSC-011` `AW-VSC-020` |
 | ![info](https://img.shields.io/badge/info-9ca3af?style=flat-square) | Claude Code bypass mode and Copilot CLI allow-all mode not disabled | `AW-CC-010` `AW-CLI-005` |
 
-### Sandbox and network (weight 20, 15 rules)
+### Sandbox and network (weight 20, 22 rules)
 
 | Severity | What Airworthy flags | Rules |
 | --- | --- | --- |
-| ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | A remote MCP server over cleartext `http://` or `ws://`, an MCP container that breaks its isolation (`--privileged`, host network, `SYS_ADMIN`, mounts of the home folder or the Docker socket), wildcard URL auto-approval, the agent sandbox turned off, sandboxed commands auto-approved with open network | `AW-MCP-003` `AW-MCP-005` `AW-VSC-010` `AW-VSC-012` `AW-VSC-018` |
-| ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | Web fetches to any domain pre-approved, project settings that weaken the Claude Code sandbox, Copilot CLI allowing every URL, unrestricted egress, commands allowed to leave the sandbox, developer-tool access and Git or GitHub CLI credentials inside the sandbox, credential folders (`~/.ssh`, `~/.aws`, `~/.azure`) not denied, read access outside the workspace | `AW-CC-004` `AW-CC-008` `AW-CLI-002` `AW-VSC-013` `AW-VSC-014` `AW-VSC-015` `AW-VSC-016` `AW-VSC-017` `AW-VSC-019` |
+| ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | A remote MCP server over cleartext `http://` or `ws://`, an MCP container that breaks its isolation (`--privileged`, host network, `SYS_ADMIN`, mounts of the home folder or the Docker socket), wildcard URL auto-approval, the agent sandbox turned off, sandboxed commands auto-approved with open network, the Codex sandbox turned off (`danger-full-access`), Codex write access to the home folder or a drive root | `AW-MCP-003` `AW-MCP-005` `AW-VSC-010` `AW-VSC-012` `AW-VSC-018` `AW-CDX-001` `AW-CDX-005` |
+| ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | Web fetches to any domain pre-approved, project settings that weaken the Claude Code sandbox, Copilot CLI allowing every URL, unrestricted egress, commands allowed to leave the sandbox, developer-tool access and Git or GitHub CLI credentials inside the sandbox, credential folders (`~/.ssh`, `~/.aws`, `~/.azure`) not denied, read access outside the workspace, network access in the Codex `workspace-write` sandbox, Codex permission profiles with unrestricted network, the `dangerously_*` options of the Codex network proxy, Codex live web search, Codex profiles that weaken the sandbox or the approvals | `AW-CC-004` `AW-CC-008` `AW-CLI-002` `AW-VSC-013` `AW-VSC-014` `AW-VSC-015` `AW-VSC-016` `AW-VSC-017` `AW-VSC-019` `AW-CDX-003` `AW-CDX-004` `AW-CDX-006` `AW-CDX-011` `AW-CDX-014` |
 | ![low](https://img.shields.io/badge/low-3b82f6?style=flat-square) | Claude Code sandboxed commands that can still run outside the sandbox | `AW-CC-009` |
 
-### MCP and supply chain (weight 20, 11 rules)
+### MCP and supply chain (weight 20, 13 rules)
 
 | Severity | What Airworthy flags | Rules |
 | --- | --- | --- |
 | ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | Every project MCP server approved automatically, MCP servers launched without a pinned version (`npx`, `uvx`, `pipx run`, `docker run` without a tag or digest), Workspace Trust turned off | `AW-CC-006` `AW-MCP-001` `AW-VSC-026` |
-| ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | Repository settings that run commands (Claude Code hooks and helpers, Copilot CLI hooks, VS Code hook files), MCP servers launched with inline shell or interpreter code, MCP discovery from other applications, servers pre-authorized for sampling | `AW-CC-007` `AW-CLI-003` `AW-VSC-027` `AW-MCP-004` `AW-VSC-021` `AW-VSC-023` |
+| ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | Repository settings that run commands (Claude Code hooks and helpers, Copilot CLI hooks, VS Code hook files, Codex hooks), Codex rules that allow commands outside the sandbox, MCP servers launched with inline shell or interpreter code, MCP discovery from other applications, servers pre-authorized for sampling | `AW-CC-007` `AW-CLI-003` `AW-VSC-027` `AW-CDX-012` `AW-CDX-013` `AW-MCP-004` `AW-VSC-021` `AW-VSC-023` |
 | ![low](https://img.shields.io/badge/low-3b82f6?style=flat-square) | MCP servers that start automatically | `AW-VSC-022` |
 | ![info](https://img.shields.io/badge/info-9ca3af?style=flat-square) | More than 10 MCP servers configured | `AW-MCP-006` |
 
@@ -237,14 +243,14 @@ critical on Windows when the agent sandbox is not on).
 | ![low](https://img.shields.io/badge/low-3b82f6?style=flat-square) | Instructions that point to private or internal URLs | `AW-AGT-011` |
 | ![info](https://img.shields.io/badge/info-9ca3af?style=flat-square) | Agent model not pinned, agent frontmatter hooks that run only in the Local harness | `AW-AGT-012` `AW-AGT-013` |
 
-### Secrets (weight 15, 14 rules)
+### Secrets (weight 15, 16 rules)
 
 | Severity | What Airworthy flags | Rules |
 | --- | --- | --- |
 | ![critical](https://img.shields.io/badge/critical-d1242f?style=flat-square) | A literal secret in an MCP server configuration (env, headers, arguments, command or URL) | `AW-MCP-002` |
-| ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | GitHub tokens, AWS access key IDs, Azure Storage account keys, OpenAI-style and Anthropic API keys, Slack tokens and private keys in configuration or instruction files | `AW-SEC-001` to `AW-SEC-007` |
+| ![high](https://img.shields.io/badge/high-f97316?style=flat-square) | GitHub tokens, AWS access key IDs, Azure Storage account keys, OpenAI-style and Anthropic API keys, Slack tokens and private keys in configuration or instruction files, a client secret or bearer token stored in a Codex config file (critical in the project file) | `AW-SEC-001` to `AW-SEC-007` `AW-CDX-009` |
 | ![medium](https://img.shields.io/badge/medium-eab308?style=flat-square) | JSON Web Tokens, hard-coded password, secret or token values, prompt content captured in telemetry, Copilot CLI allowed to store tokens in plain text | `AW-SEC-008` `AW-SEC-009` `AW-VSC-025` `AW-CLI-004` |
-| ![low](https://img.shields.io/badge/low-3b82f6?style=flat-square) | No Claude Code deny rule for `.env` files and `~/.ssh`, an environment file at the root of the workspace | `AW-CC-005` `AW-SEC-010` |
+| ![low](https://img.shields.io/badge/low-3b82f6?style=flat-square) | No Claude Code deny rule for `.env` files and `~/.ssh`, an environment file at the root of the workspace, Codex passing every environment variable, secrets included, to commands | `AW-CC-005` `AW-SEC-010` `AW-CDX-007` |
 
 ### Audit and observability (weight 5, 1 rule)
 
@@ -254,13 +260,13 @@ critical on Windows when the agent sandbox is not on).
 | ![info](https://img.shields.io/badge/info-9ca3af?style=flat-square) | Engine findings: a file that could not be read or parsed, or a rule that failed (they never change the score) | `AW-CORE-001` `AW-CORE-002` |
 
 Every rule carries a description, a concrete fix, an [OWASP Top 10 for Agentic Applications](https://genai.owasp.org)
-reference and, for all but one rule, a link to the official Microsoft, GitHub or Anthropic
+reference and, for all but one rule, a link to the official Microsoft, GitHub, Anthropic or OpenAI
 documentation. Each rule also has a **confidence**: `high` when the documented behavior is
 confirmed, `medium` when the documentation is incomplete or contradictory, in which case the
-description says what remains to be verified. Today 51 rules have `high` confidence and 20 have `medium`.
+description says what remains to be verified. Today 61 rules have `high` confidence and 24 have `medium`.
 
 <details>
-<summary><b>All 71 rules</b> (generated from the module's rule registry)</summary>
+<summary><b>All 85 rules</b> (generated from the module's rule registry)</summary>
 
 <br>
 
@@ -289,6 +295,20 @@ description says what remains to be verified. Today 51 rules have `high` confide
 | `AW-CC-008` | medium | Project settings disable or weaken the sandbox | Claude Code |
 | `AW-CC-009` | low | Sandboxed commands can still run outside the sandbox | Claude Code |
 | `AW-CC-010` | info | bypassPermissions mode is not disabled | Claude Code |
+| `AW-CDX-001` | high | Codex runs commands without a sandbox | Codex CLI |
+| `AW-CDX-002` | medium | Codex never asks for approval | Codex CLI |
+| `AW-CDX-003` | medium | Codex workspace-write sandbox has network access | Codex CLI |
+| `AW-CDX-004` | medium | Codex permission profile allows unrestricted network access | Codex CLI |
+| `AW-CDX-005` | high | Codex can write to a very broad folder | Codex CLI |
+| `AW-CDX-006` | medium | Codex network proxy safety check turned off | Codex CLI |
+| `AW-CDX-007` | low | Codex passes every environment variable, secrets included, to commands | Codex CLI |
+| `AW-CDX-008` | high | Codex MCP tools run without approval | Codex CLI |
+| `AW-CDX-009` | high | Secret stored in a Codex config file | Codex CLI |
+| `AW-CDX-010` | high | Codex trusts a folder that is too broad | Codex CLI |
+| `AW-CDX-011` | medium | Codex live web search is enabled | Codex CLI |
+| `AW-CDX-012` | medium | Project Codex hooks run commands | Codex CLI |
+| `AW-CDX-013` | medium | Project Codex rules allow commands outside the sandbox | Codex CLI |
+| `AW-CDX-014` | medium | Codex profile weakens the sandbox or the approvals | Codex CLI |
 | `AW-CLI-001` | high | Copilot CLI trusts a folder that is too broad | Copilot CLI |
 | `AW-CLI-002` | medium | Copilot CLI allows every URL without prompting | Copilot CLI |
 | `AW-CLI-003` | medium | Repository settings run Copilot CLI hooks | Copilot CLI |
@@ -339,10 +359,48 @@ description says what remains to be verified. Today 51 rules have `high` confide
 | `AW-VSC-027` | medium | Repository hook file runs in the Local harness | VS Code Copilot |
 
 *Any* rules apply whatever harness is detected. *MCP (all clients)* rules apply to the MCP
-servers of VS Code, Claude Code and Copilot CLI alike. To list the rules yourself:
+servers of VS Code, Claude Code, Copilot CLI and Codex CLI alike. To list the rules yourself:
 `& (Import-Module .\Airworthy.psd1 -PassThru) { Get-AwRules } | Format-Table Id, Severity, Harness, Title`.
 
 </details>
+
+### Codex CLI
+
+Codex CLI keeps its configuration in TOML files. Airworthy reads them with its own TOML parser,
+with no dependency and the same guards as its other parsers (a size limit, a depth limit and a
+linear tokenizer): an invalid or hostile file becomes an `AW-CORE-001` finding. The project
+`.codex/config.toml` overrides the user `config.toml`, and each profile file (`<name>.config.toml`,
+selected with `--profile <name>`) is checked with the layers it applies with: project config >
+profile > user config. As in Codex, `sandbox_mode` in any loaded file takes precedence over
+`default_permissions`, and `[sandbox_workspace_write]` does not apply with permission profiles.
+The 14 `AW-CDX` rules cover:
+
+- **Sandbox, approvals and trust:** the sandbox turned off with `sandbox_mode = "danger-full-access"`
+  or `default_permissions = ":danger-full-access"` (`AW-CDX-001`); `approval_policy = "never"`,
+  critical when the sandbox is off too, as with `--yolo` (`AW-CDX-002`); `trust_level = "trusted"`
+  on the home folder or a drive root (`AW-CDX-010`); profiles that weaken the sandbox or the
+  approvals, high when the profile and the user or project config together leave neither
+  (`AW-CDX-014`).
+- **Network and file system:** network access in the `workspace-write` sandbox (`AW-CDX-003`),
+  permission profiles with the network on but the network proxy off (direct, unrestricted
+  access), full network access or a `"*" = "allow"` domain rule (`AW-CDX-004`),
+  writable roots such as the home folder or a drive root (`AW-CDX-005`), the `dangerously_*`
+  options of the network proxy (`AW-CDX-006`) and live web search (`AW-CDX-011`).
+- **Secrets:** every environment variable passed to commands with
+  `shell_environment_policy.inherit = "all"` and no filter (`AW-CDX-007`), and a literal
+  `oauth.client_secret` or `experimental_bearer_token` (`AW-CDX-009`, critical in the project file).
+- **MCP servers, hooks and rules:** MCP servers and tools set to run without a prompt
+  (`AW-CDX-008`), project hooks (`AW-CDX-012`) and project rules that allow commands outside the
+  sandbox (`AW-CDX-013`). The `[mcp_servers.<id>]` tables also go through the `AW-MCP` rules:
+  unpinned launchers, literal secrets in `env` or `http_headers`, cleartext HTTP, inline code and
+  container escapes. `env_http_headers`, `bearer_token_env_var` and `env_vars` name environment
+  variables, so their values are not reported as secrets.
+
+When the machine-wide `requirements.toml` does not allow a value (`allowed_sandbox_modes`,
+`allowed_approval_policies`, `allowed_web_search_modes` or `allowed_permission_profiles`), the
+matching finding drops to `info`, and project hooks are not reported when it allows managed hooks
+only. Command-line flags such as `--yolo`, `--sandbox` or `-c key=value` are invisible to a static
+analysis.
 
 ## Scoring
 
@@ -383,7 +441,7 @@ The same input always gives the same output, apart from the scan timestamp.
 - the table of every rule evaluated, with its result;
 - light and dark themes, print styles, keyboard navigation and screen reader labels.
 
-**See it:** [`examples/airworthy-insecure.html`](examples/airworthy-insecure.html) (score 20, grade F) and
+**See it:** [`examples/airworthy-insecure.html`](examples/airworthy-insecure.html) (score 14, grade F) and
 [`examples/airworthy-hardened.html`](examples/airworthy-hardened.html) (score 98, grade A), generated from the
 test fixtures. GitHub shows the source of HTML files: download the file and open it in your browser.
 The same analysis is also available as [Markdown](examples/airworthy-insecure.md),
@@ -463,8 +521,8 @@ jobs:
 - **Limited reads.** With `-NoUserProfile`, Airworthy reads only the analyzed folder (plus the
   `-UserSettingsPath` file, if you name one). By default it
   also reads the agent configuration files of your user profile listed in
-  [What it checks](#what-it-checks), and the machine-wide Claude Code `managed-settings.json` if
-  there is one. It never follows a symbolic link or junction out of the analyzed folder, and it
+  [What it checks](#what-it-checks), and the machine-wide Claude Code `managed-settings.json` and
+  Codex `requirements.toml` if there are any. It never follows a symbolic link or junction out of the analyzed folder, and it
   writes nothing but the `-OutFile` reports you ask for.
 - **Masked secrets.** Secrets are never shown in full in any output: they keep their first 4 and
   last 2 characters and their length (`ghp_…34 (40 chars)`).
@@ -474,24 +532,27 @@ jobs:
 
 > [!WARNING]
 > `-Redact` masks the analyzed folder, the user profile and the user name. Other absolute paths,
-> such as a `-UserSettingsPath` file elsewhere, the machine-wide `managed-settings.json` or the
-> project paths listed in `~/.claude.json`, stay as they are (in SARIF, as `file:///` URIs).
+> such as a `-UserSettingsPath` file elsewhere, the machine-wide `managed-settings.json` and
+> `requirements.toml`, or the project paths listed in `~/.claude.json`, stay as they are (in SARIF,
+> as `file:///` URIs).
 > Review a report before you share it.
 
 ## Limitations
 
 - **Static analysis only.** Airworthy reads files. It cannot see command-line flags, permissions
   granted during a session, or policies held elsewhere: GitHub organization and enterprise policies,
-  VS Code policies deployed through the registry, or Copilot CLI managed settings. Claude Code
-  managed settings are read only from the real machine.
+  VS Code policies deployed through the registry, Copilot CLI managed settings, or the Codex
+  `managed_config.toml` and `/etc/codex/config.toml` layers. Claude Code managed settings and the
+  Codex `requirements.toml` are read only from the real machine.
 - **A fast-moving target.** The rules follow the official documentation of each harness as read in
-  October 2026. Harnesses change quickly, and 20 rules have `medium` confidence because the
+  October 2026. Harnesses change quickly, and 24 rules have `medium` confidence because the
   documentation is incomplete or contradictory.
 - **Heuristics.** The secret and instruction-text checks can produce false positives and miss
   things. The secret scan covers the discovered configuration files and the root `.env*` files: it
   does not replace a repository-wide secret scanner.
-- **Scope.** Only the known locations above are read: nested `AGENTS.md` files and sub-projects of
-  a monorepo are not discovered. Files over 2 MB are skipped, each analysis reads at most 32 MB,
+- **Scope.** Only the known locations above are read: nested `AGENTS.md` files, `.codex/` folders
+  of sub-folders, personal Codex hooks and rules (`~/.codex/hooks.json`, `~/.codex/rules/`) and
+  sub-projects of a monorepo are not discovered. Files over 2 MB are skipped, each analysis reads at most 32 MB,
   and a file that cannot be read becomes an `AW-CORE-001` finding.
 - **Regex dialect.** VS Code terminal rules are JavaScript regexes; Airworthy evaluates them with
   .NET regexes under a short timeout, so a JavaScript-only feature makes a rule count as non-matching.
@@ -505,7 +566,7 @@ jobs:
 Ideas for the next versions, in no particular order. Feedback and pull requests are welcome.
 
 - [ ] **Packaging:** a PowerShell Gallery module and a ready-made GitHub Action.
-- [ ] **More harnesses:** Cursor, Windsurf, Codex CLI and Gemini CLI.
+- [ ] **More harnesses:** Cursor, Windsurf and Gemini CLI.
 - [ ] **Enterprise policies:** read VS Code policies from the Windows registry, and GitHub managed settings.
 - [ ] **Baselines:** compare two analyses, track the score over time, and accept known findings.
 - [ ] **More rules:** the Copilot CLI sandbox setting, `headersHelper` in `.mcp.json`, and the `env` block of Claude Code settings.
@@ -542,7 +603,7 @@ Copyright 2026 Toonight.
 ## Disclaimer
 
 Airworthy is an independent project. It is not affiliated with, endorsed by or sponsored by
-Microsoft, GitHub, Anthropic or Harness Inc. Visual Studio Code, GitHub Copilot, Claude Code and
-the other product names are trademarks of their respective owners and are used only to describe
+Microsoft, GitHub, Anthropic, OpenAI or Harness Inc. Visual Studio Code, GitHub Copilot, Claude
+Code, Codex and the other product names are trademarks of their respective owners and are used only to describe
 compatibility. Airworthy performs a best-effort static analysis: it does not guarantee that a
 configuration is secure, and it is provided "as is", without warranty of any kind.

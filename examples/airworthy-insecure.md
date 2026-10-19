@@ -1,33 +1,33 @@
 # Airworthy report
 
-**Score: 20/100, grade F**
+**Score: 14/100, grade F**
 
 | Item | Value |
 | --- | --- |
-| Score | 20 / 100 |
+| Score | 14 / 100 |
 | Grade | F |
-| Findings | 5 critical, 18 high, 10 medium, 4 low, 2 info |
-| Shown | 39 at or above info |
-| Harnesses | vscode-copilot, claude-code, mcp |
+| Findings | 7 critical, 21 high, 13 medium, 5 low, 2 info |
+| Shown | 48 at or above info |
+| Harnesses | vscode-copilot, claude-code, codex, mcp |
 | Root | `insecure` |
-| Scanned at | 2026-10-18T23:40:32Z |
-| Tool | Airworthy 0.1.0 |
+| Scanned at | 2026-10-19T05:57:37Z |
+| Tool | Airworthy 0.2.0 |
 | Redacted | yes |
 
 ## Categories
 
 | Category | Weight | Score | Findings |
 | --- | ---: | ---: | ---: |
-| Approvals and terminal | 25 | 0 | 16 |
-| Sandbox and network | 20 | 4 | 6 |
-| MCP and supply chain | 20 | 23 | 8 |
+| Approvals and terminal | 25 | 0 | 18 |
+| Sandbox and network | 20 | 0 | 8 |
+| MCP and supply chain | 20 | 10 | 10 |
 | Agent files and instructions | 15 | 44 | 5 |
-| Secrets | 15 | 17 | 4 |
+| Secrets | 15 | 0 | 7 |
 | Audit and observability | 5 | 100 | 0 |
 
 ## Findings
 
-### Critical (5)
+### Critical (7)
 
 #### AW-CC-003: Every shell command is pre-approved
 
@@ -37,6 +37,24 @@
 - **Why it matters:** A permissions.allow rule that matches every Bash or PowerShell command ("Bash", "Bash(\*)", "PowerShell(\*)") lets Claude run any command without a prompt, which makes prompt injection equivalent to code execution. Rules that allow an interpreter or a runner with a wildcard ("Bash(python \*)", "Bash(bash -c \*)", "Bash(npx \*)"; the list is in src/Data/claudecode.json) or put the wildcard before the program ("Bash(\* --help)") are just as broad and are reported as high. Allow rules in a project file apply once the folder is trusted. Rules are ignored when a deny rule removes the whole tool (its name, Tool(\*), or a tool-name glob such as "\*").
 - **Details:** category Approvals and terminal, harness claude-code, confidence high
 - **References:** OWASP-ASI02, OWASP-ASI05, <https://code.claude.com/docs/en/permissions>
+
+#### AW-CDX-002: Codex never asks for approval
+
+- **Location:** `.codex\config.toml:5`, key `approval_policy`
+- **Evidence:** `approval_policy = "never" (project config); with sandbox_mode = "danger-full-access" (project config): no sandbox and no approval`
+- **Fix:** Use approval\_policy = "on-request" (or a granular table that keeps the prompts you need), and never combine "never" with danger-full-access outside an isolated container or VM. Restrict the allowed values with allowed\_approval\_policies in requirements.toml.
+- **Why it matters:** approval\_policy = "never" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox\_mode = "danger-full-access", or default\_permissions = ":danger-full-access" when no loaded config file sets sandbox\_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow "never" (allowed\_approval\_policies).
+- **Details:** category Approvals and terminal, harness codex, confidence high
+- **References:** OWASP-ASI02, <https://learn.chatgpt.com/docs/agent-approvals-security>, <https://learn.chatgpt.com/docs/config-file/config-reference>
+
+#### AW-CDX-009: Secret stored in a Codex config file
+
+- **Location:** `.codex\config.toml:22`, key `mcp_servers.tracker.oauth.client_secret`
+- **Evidence:** `mcp_servers.tracker.oauth.client_secret = FAKE…07 (29 chars) (project config)`
+- **Fix:** Remove the value and rotate the secret. Use env\_key for model providers, bearer\_token\_env\_var or env\_http\_headers for MCP servers, and keep any client secret in the user config file only, out of version control.
+- **Why it matters:** Flags literal values of mcp\_servers.\<id\>.oauth.client\_secret (the documentation says it is stored in the configuration and asks to keep the file private and out of version control) and model\_providers.\<id\>.experimental\_bearer\_token (a direct bearer token, discouraged in favor of env\_key). Anyone, or any agent, tool or backup, that reads the file gets the secret. The finding is critical in the project .codex/config.toml, which is usually committed. Values are always masked. Static MCP headers (http\_headers) and env values are checked by AW-MCP-002.
+- **Details:** category Secrets, harness codex, confidence high
+- **References:** OWASP-ASI03, <https://learn.chatgpt.com/docs/extend/mcp>, <https://learn.chatgpt.com/docs/config-file/config-reference>
 
 #### AW-MCP-002: Hardcoded secret in an MCP server configuration
 
@@ -74,7 +92,7 @@
 - **Details:** category Approvals and terminal, harness vscode-copilot, confidence high
 - **References:** OWASP-ASI05, OWASP-ASI02, <https://code.visualstudio.com/docs/copilot/reference/copilot-settings>, <https://code.visualstudio.com/docs/agents/run/approvals>
 
-### High (18)
+### High (21)
 
 #### AW-AGT-001: Custom agent enables every tool (tools: '\*')
 
@@ -102,6 +120,33 @@
 - **Why it matters:** enableAllProjectMcpServers = true approves every server in the project .mcp.json without a prompt, including servers added later by a commit or a pull request. Each server is code that runs, or a remote service that is called, with your rights. In a trusted folder the highest-precedence Boolean decides. In a folder you have not trusted, Claude Code ignores the value in the shared project file, but a true in user or managed settings is enough on its own, even when a higher-precedence file sets false. A disabledMcpjsonServers entry still rejects a server.
 - **Details:** category MCP and supply chain, harness claude-code, confidence high
 - **References:** OWASP-ASI04, <https://code.claude.com/docs/en/mcp>, <https://code.claude.com/docs/en/settings-reference>
+
+#### AW-CDX-001: Codex runs commands without a sandbox
+
+- **Location:** `.codex\config.toml:6`, key `sandbox_mode`
+- **Evidence:** `sandbox_mode = "danger-full-access" (project config)`
+- **Fix:** Use sandbox\_mode = "workspace-write" (or default\_permissions = ":workspace") and grant extra folders or network access explicitly. Keep danger-full-access for a container or VM that is already isolated, and enforce the limit with allowed\_sandbox\_modes or allowed\_permission\_profiles in requirements.toml.
+- **Why it matters:** sandbox\_mode = "danger-full-access", or default\_permissions = ":danger-full-access", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed\_sandbox\_modes or allowed\_permission\_profiles).
+- **Details:** category Sandbox and network, harness codex, confidence high
+- **References:** OWASP-ASI05, OWASP-ASI02, <https://learn.chatgpt.com/docs/agent-approvals-security>, <https://learn.chatgpt.com/docs/permissions>, <https://learn.chatgpt.com/docs/config-file/config-reference>
+
+#### AW-CDX-008: Codex MCP tools run without approval
+
+- **Location:** `.codex\config.toml:15`, key `mcp_servers.repo-tools.default_tools_approval_mode`
+- **Evidence:** `mcp_servers.repo-tools.default_tools_approval_mode = "approve": every tool of the server runs without a prompt (project config)`
+- **Fix:** Use default\_tools\_approval\_mode = "writes" (or "prompt"), and set approval\_mode = "approve" only on read-only tools you trust, never on tools that write, send or delete.
+- **Why it matters:** Flags MCP servers whose default\_tools\_approval\_mode is "approve" (every tool of the server, high) and tools whose approval\_mode is "approve" (one tool, medium), under mcp\_servers.\<id\> and plugins.\<plugin\>.mcp\_servers.\<id\>. Tool calls then run without a prompt, so a prompt injection can make the agent write, send or delete data through them. The documentation lists the values auto, prompt, writes and approve and describes only writes (it prompts for tools not marked read-only); auto is the built-in fallback. It also says that a tool call that advertises a destructive annotation always requires approval, unless the tool also advertises a read annotation, without saying whether approve overrides that. That approve skips the prompt is inferred from its name and from the documentation example, so confidence is medium.
+- **Details:** category Approvals and terminal, harness codex, confidence medium
+- **References:** OWASP-ASI02, <https://learn.chatgpt.com/docs/extend/mcp>, <https://learn.chatgpt.com/docs/config-file/config-reference>
+
+#### AW-MCP-001: MCP server launched without a pinned version
+
+- **Location:** `.codex\config.toml:12`, key `repo-tools.command`
+- **Evidence:** `server 'repo-tools': npx runs '@example/mcp-repo-tools' without a pinned version (npx -y @example/mcp-repo-tools)`
+- **Fix:** Pin an exact version: npx -y @scope/server@1.4.2, uvx package==1.4.2 (or package@1.4.2), pipx run --spec package==1.4.2 package, or docker run image@sha256:\<digest\>. Review each update before you change the version.
+- **Why it matters:** Checks how each stdio MCP server is launched. npx (and npm exec, pnpm/yarn dlx, bunx), uvx, uv tool run and pipx run download the package when the server starts; without an exact version (or with @latest, a tag or a range) a new release, or a hijacked package, runs with the agent's privileges and no review. The same holds for docker run with an image that has no tag, the latest tag, or no digest. Wrappers such as cmd /c, sh -c and powershell -Command are unwrapped. Local paths are not checked.
+- **Details:** category MCP and supply chain, harness mcp, confidence high
+- **References:** OWASP-ASI04, <https://code.visualstudio.com/docs/copilot/reference/mcp-configuration>, <https://code.claude.com/docs/en/mcp>
 
 #### AW-MCP-001: MCP server launched without a pinned version
 
@@ -238,7 +283,7 @@
 - **Details:** category Secrets, harness vscode-copilot, confidence high
 - **References:** OWASP-ASI03, <https://code.visualstudio.com/docs/copilot/reference/copilot-settings>
 
-### Medium (10)
+### Medium (13)
 
 #### AW-AGT-005: Handoff submits its prompt automatically (send: true)
 
@@ -285,6 +330,33 @@
 - **Details:** category MCP and supply chain, harness claude-code, confidence high
 - **References:** OWASP-ASI04, OWASP-ASI05, <https://code.claude.com/docs/en/hooks>, <https://code.claude.com/docs/en/permissions>, <https://code.claude.com/docs/en/settings-reference>
 
+#### AW-CDX-011: Codex live web search is enabled
+
+- **Location:** `.codex\config.toml:7`, key `web_search`
+- **Evidence:** `web_search = "live" (project config)`
+- **Fix:** Keep web\_search = "cached" (the default), or "indexed", and use live search only in sessions that need it (--search). Restrict it with allowed\_web\_search\_modes in requirements.toml.
+- **Why it matters:** web\_search = "live" gives the agent unrestricted live retrieval of web pages, instead of the default "cached" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow "live" (allowed\_web\_search\_modes).
+- **Details:** category Sandbox and network, harness codex, confidence high
+- **References:** OWASP-ASI01, <https://learn.chatgpt.com/docs/config-file/config-basic>, <https://learn.chatgpt.com/docs/agent-approvals-security>, <https://learn.chatgpt.com/docs/config-file/config-reference>
+
+#### AW-CDX-012: Project Codex hooks run commands
+
+- **Location:** `.codex\config.toml:24`, key `hooks.SessionStart`
+- **Evidence:** `hook SessionStart command: ./scripts/bootstrap.sh`
+- **Fix:** Review every hook command and the scripts it calls before you trust it, protect .codex/ with CODEOWNERS and required reviews, and keep personal hooks in \~/.codex/hooks.json. Set allow\_managed\_hooks\_only = true in requirements.toml where repository hooks are not needed.
+- **Why it matters:** Lists the command and MCP tool hooks of the project .codex/hooks.json and of the \[hooks\] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex\_hooks, project config over user config) or when requirements.toml sets allow\_managed\_hooks\_only = true or features.hooks = false.
+- **Details:** category MCP and supply chain, harness codex, confidence high
+- **References:** OWASP-ASI04, OWASP-ASI05, <https://learn.chatgpt.com/docs/hooks>, <https://learn.chatgpt.com/docs/config-file/config-advanced>
+
+#### AW-SEC-009: Hard-coded password, secret or token value
+
+- **Location:** `.codex\config.toml:22`, key `client_secret`
+- **Evidence:** `Hard-coded value: FAKE…07 (29 chars)`
+- **Fix:** Revoke the secret and issue a new one, remove it from the file and from the Git history, and load it at run time instead: an input variable in .vscode/mcp.json (${input:...} with "password": true), or an environment variable set outside the repository.
+- **Why it matters:** A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references (${input:...}, $VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct characters) are ignored, and so are the values of the env\_http\_headers, bearer\_token\_env\_var and env\_vars keys of Codex MCP servers, which name environment variables (unless the value is not a valid variable name or also appears elsewhere in the file). The remaining matches may still include false positives.
+- **Details:** category Secrets, harness codex, confidence medium
+- **References:** OWASP-ASI03, <https://code.visualstudio.com/docs/copilot/customization/mcp-servers>
+
 #### AW-VSC-006: Windows exfiltration commands lack approval-required rules
 
 - **Location:** `.vscode\settings.json:14`, key `chat.tools.terminal.autoApprove`
@@ -330,7 +402,7 @@
 - **Details:** category MCP and supply chain, harness vscode-copilot, confidence medium
 - **References:** OWASP-ASI04, OWASP-ASI02, <https://code.visualstudio.com/docs/copilot/reference/copilot-settings>, <https://code.visualstudio.com/docs/copilot/customization/mcp-servers>
 
-### Low (4)
+### Low (5)
 
 #### AW-CC-005: No deny rule protects secret files
 
@@ -340,6 +412,15 @@
 - **Why it matters:** Checks the merged permissions.deny rules for a Read rule that covers .env files in the project and, when the user or managed settings are analyzed, \~/.ssh. Without them Claude can read these files with its file tools and send their content to the model or to a tool. Read deny rules also block Edit and Write on the same paths. They do not stop every subprocess (use the sandbox for that), but they are the documented way to exclude sensitive files.
 - **Details:** category Secrets, harness claude-code, confidence high
 - **References:** OWASP-ASI03, <https://code.claude.com/docs/en/permissions>, <https://code.claude.com/docs/en/settings-reference>
+
+#### AW-CDX-007: Codex passes every environment variable, secrets included, to commands
+
+- **Location:** `.codex\config.toml:10`, key `shell_environment_policy.inherit`
+- **Evidence:** `shell_environment_policy.inherit = "all", no exclude or include filter, ignore_default_excludes not set (default true) (project config)`
+- **Fix:** Use inherit = "core" (or "none"), set ignore\_default\_excludes = false, and add \[shell\_environment\_policy.filters\] entries that exclude the secrets the commands do not need.
+- **Why it matters:** shell\_environment\_policy.inherit = "all" gives every command the agent runs the whole environment of the Codex process. ignore\_default\_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to "exclude", or the legacy exclude list) or an include allowlist (filters entries set to "include", or include\_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore\_default\_excludes = false or a filter restricts the variables.
+- **Details:** category Secrets, harness codex, confidence high
+- **References:** OWASP-ASI03, <https://learn.chatgpt.com/docs/config-file/config-advanced>, <https://learn.chatgpt.com/docs/config-file/config-reference>
 
 #### AW-VSC-011: Terminal risk assessment disabled
 
@@ -390,7 +471,7 @@
 
 ## Rules evaluated
 
-66 rules were evaluated for the detected harnesses. The Findings column counts the findings shown above.
+80 rules were evaluated for the detected harnesses. The Findings column counts the findings shown above.
 
 | Rule | Title | Severity | Category | Harness | Confidence | Findings |
 | --- | --- | --- | --- | --- | --- | ---: |
@@ -417,7 +498,21 @@
 | AW-CC-008 | Project settings disable or weaken the sandbox | medium | sandbox-network | claude-code | high | 0 |
 | AW-CC-009 | Sandboxed commands can still run outside the sandbox | low | sandbox-network | claude-code | high | 0 |
 | AW-CC-010 | bypassPermissions mode is not disabled | info | approvals | claude-code | high | 1 |
-| AW-MCP-001 | MCP server launched without a pinned version | high | mcp-supply-chain | mcp | high | 3 |
+| AW-CDX-001 | Codex runs commands without a sandbox | high | sandbox-network | codex | high | 1 |
+| AW-CDX-002 | Codex never asks for approval | medium | approvals | codex | high | 1 |
+| AW-CDX-003 | Codex workspace-write sandbox has network access | medium | sandbox-network | codex | high | 0 |
+| AW-CDX-004 | Codex permission profile allows unrestricted network access | medium | sandbox-network | codex | medium | 0 |
+| AW-CDX-005 | Codex can write to a very broad folder | high | sandbox-network | codex | high | 0 |
+| AW-CDX-006 | Codex network proxy safety check turned off | medium | sandbox-network | codex | high | 0 |
+| AW-CDX-007 | Codex passes every environment variable, secrets included, to commands | low | secrets | codex | high | 1 |
+| AW-CDX-008 | Codex MCP tools run without approval | high | approvals | codex | medium | 1 |
+| AW-CDX-009 | Secret stored in a Codex config file | high | secrets | codex | high | 1 |
+| AW-CDX-010 | Codex trusts a folder that is too broad | high | approvals | codex | medium | 0 |
+| AW-CDX-011 | Codex live web search is enabled | medium | sandbox-network | codex | high | 1 |
+| AW-CDX-012 | Project Codex hooks run commands | medium | mcp-supply-chain | codex | high | 1 |
+| AW-CDX-013 | Project Codex rules allow commands outside the sandbox | medium | mcp-supply-chain | codex | medium | 0 |
+| AW-CDX-014 | Codex profile weakens the sandbox or the approvals | medium | sandbox-network | codex | high | 0 |
+| AW-MCP-001 | MCP server launched without a pinned version | high | mcp-supply-chain | mcp | high | 4 |
 | AW-MCP-002 | Hardcoded secret in an MCP server configuration | critical | secrets | mcp | high | 1 |
 | AW-MCP-003 | Remote MCP server reached over cleartext HTTP | high | sandbox-network | mcp | high | 1 |
 | AW-MCP-004 | MCP server runs inline shell or interpreter code | medium | mcp-supply-chain | mcp | medium | 0 |
@@ -431,7 +526,7 @@
 | AW-SEC-006 | Slack token in a configuration file | high | secrets | generic | high | 0 |
 | AW-SEC-007 | Private key in a configuration file | high | secrets | generic | high | 0 |
 | AW-SEC-008 | JSON Web Token in a configuration file | medium | secrets | generic | high | 0 |
-| AW-SEC-009 | Hard-coded password, secret or token value | medium | secrets | generic | medium | 0 |
+| AW-SEC-009 | Hard-coded password, secret or token value | medium | secrets | generic | medium | 1 |
 | AW-SEC-010 | Environment file in the workspace | low | secrets | generic | high | 0 |
 | AW-VSC-001 | Global auto-approval of tools enabled | critical | approvals | vscode-copilot | high | 1 |
 | AW-VSC-002 | Default permission level skips approvals | high | approvals | vscode-copilot | medium | 1 |
@@ -463,4 +558,4 @@
 
 ---
 
-Generated offline by Airworthy 0.1.0. Static analysis only: no agent, MCP server or hook was run.
+Generated offline by Airworthy 0.2.0. Static analysis only: no agent, MCP server or hook was run.

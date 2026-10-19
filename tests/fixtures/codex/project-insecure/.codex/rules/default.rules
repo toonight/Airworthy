@@ -1,0 +1,13 @@
+# Synthetic Codex rules file (Airworthy test fixture).
+# prefix_rule(pattern = ["commented", "out"], decision = "allow")
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "allow",
+    justification = "Synthetic fixture",
+)
+
+prefix_rule(pattern = ["rm"], decision = "forbidden")
+
+prefix_rule(pattern = ["npm", "publish"])
+
+prefix_rule(pattern = ["git", "status"], decision = "prompt")

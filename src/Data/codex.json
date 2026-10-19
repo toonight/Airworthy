@@ -1,0 +1,29 @@
+// Airworthy rule data for src/Rules/Codex.ps1 (AW-CDX-*).
+// Setting keys and values only, stored as separate tokens: no command lines, no payloads, no URLs.
+{
+  // AW-CDX-001 / AW-CDX-002 / AW-CDX-014: the values that remove the sandbox.
+  "fullAccessSandboxMode": "danger-full-access",
+  "fullAccessPermissions": ":danger-full-access",
+
+  // AW-CDX-006: network options that switch off a safety check, under features.network_proxy
+  // and permissions.<name>.network.
+  "dangerousNetworkOptions": ["dangerously_allow_all_unix_sockets", "dangerously_allow_non_loopback_proxy"],
+
+  // AW-CDX-005 / AW-CDX-010: spellings of the home directory and of the file system root.
+  "homePathTokens": ["~", "$HOME", "${HOME}", "%USERPROFILE%", "$env:USERPROFILE", "$env:HOME", "%HOMEDRIVE%%HOMEPATH%"],
+  "rootPathTokens": [":root"],
+
+  // AW-CDX-005: permission profile entries that make the workspace roots writable.
+  "workspaceProfile": ":workspace",
+  "workspaceRootsToken": ":workspace_roots",
+
+  // AW-CDX-008: the MCP approval mode that runs tools without a prompt.
+  "autoApproveMode": "approve",
+
+  // AW-CDX-012: fields of a command hook handler that hold the command line.
+  "hookCommandFields": ["command", "commandWindows", "command_windows"],
+
+  // AW-CDX-013: Starlark function of a rules file, and the decisions that do not allow a command.
+  "ruleFunction": "prefix_rule",
+  "restrictiveDecisions": ["prompt", "forbidden"]
+}

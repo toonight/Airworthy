@@ -1,0 +1,33 @@
+{
+  "model": "example-model",
+  "approval_policy": "on-request",
+  "sandbox_mode": "workspace-write",
+  "max_turns": 25,
+  "temperature": 0.2,
+  "hide_reasoning": false,
+  "updated": "2026-01-15T09:30:00Z",
+  "sandbox_workspace_write": {
+    "network_access": false,
+    "writable_roots": ["C:\\Example\\cache", "/tmp/example"]
+  },
+  "shell_environment_policy": {
+    "inherit": "core",
+    "exclude": ["AWS_*", "AZURE_*"],
+    "set": { "EXAMPLE_FLAG": "1" }
+  },
+  "mcp_servers": {
+    "docs": {
+      "command": "docs-server",
+      "args": ["--stdio", "--root", "."],
+      "env": { "DOCS_TOKEN": "FAKE-TOKEN-NOT-A-SECRET" },
+      "startup_timeout_sec": 20,
+      "tools": { "search": { "approval_mode": "prompt" } }
+    },
+    "remote.example": { "url": "https://mcp.example.invalid/mcp", "enabled": false }
+  },
+  "profiles": { "review": { "model": "example-model-mini", "approval_policy": "untrusted" } },
+  "projects": {
+    "C:\\Example\\repo": { "trust_level": "trusted" },
+    "/home/example/project": { "trust_level": "untrusted" }
+  }
+}

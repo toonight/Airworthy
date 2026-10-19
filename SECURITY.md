@@ -10,8 +10,8 @@ Airworthy is young: only the latest release line receives security fixes.
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x (and `main`) | ✅ |
-| Earlier snapshots | ❌ |
+| 0.2.x (and `main`) | ✅ |
+| 0.1.x and earlier snapshots | ❌ |
 
 ## Reporting a vulnerability
 
@@ -58,8 +58,8 @@ or to the people who read its reports, in particular:
 
 ## Out of scope
 
-- Vulnerabilities in VS Code, GitHub Copilot, Claude Code, Copilot CLI, MCP servers or other
-  products: report them to their vendors.
+- Vulnerabilities in VS Code, GitHub Copilot, Claude Code, Copilot CLI, Codex CLI, MCP servers or
+  other products: report them to their vendors.
 - Rules that miss a risky setting or flag a safe one, outside the hostile-input cases above:
   open a regular issue.
 - Paths that `-Redact` documents it does not mask (absolute paths outside the analyzed folder and
@@ -95,7 +95,8 @@ How Airworthy protects itself and its users (details in [docs/ARCHITECTURE.md](d
   files run with a 50 ms timeout and a global budget.
 - **Least reads.** With `-NoUserProfile`, only the analyzed folder is read (plus a
   `-UserSettingsPath` file you name). Otherwise only known agent configuration files of the
-  profile, and the machine-wide Claude Code managed settings, are read as well.
+  profile, and the machine-wide Claude Code managed settings and Codex `requirements.toml`, are
+  read as well.
 - **Secrets masked.** Evidence never contains a full secret, and every output masks any remaining
   token-like value again before writing.
 - **Safe outputs.** The HTML report embeds the results as inert, escaped JSON, renders them with

@@ -6,8 +6,8 @@
       "tool": {
         "driver": {
           "name": "Airworthy",
-          "version": "0.1.0",
-          "semanticVersion": "0.1.0",
+          "version": "0.2.0",
+          "semanticVersion": "0.2.0",
           "informationUri": "https://github.com/toonight/Airworthy",
           "rules": [
             {
@@ -624,6 +624,378 @@
               }
             },
             {
+              "id": "AW-CDX-001",
+              "name": "CodexRunsCommandsWithoutASandbox",
+              "shortDescription": {
+                "text": "Codex runs commands without a sandbox"
+              },
+              "fullDescription": {
+                "text": "sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\", turns the Codex sandbox off: every command the agent runs can read and write wherever the user can and reach the network, and web search then defaults to live results. The documentation reserves it for cases where that broad access is intended. A prompt injection in a file, a web page or a tool result can then run any command on the machine. User and project config files and requirements.toml are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow the value (allowed_sandbox_modes or allowed_permission_profiles)."
+              },
+              "help": {
+                "text": "Use sandbox_mode = \"workspace-write\" (or default_permissions = \":workspace\") and grant extra folders or network access explicitly. Keep danger-full-access for a container or VM that is already isolated, and enforce the limit with allowed_sandbox_modes or allowed_permission_profiles in requirements.toml."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/agent-approvals-security",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI05",
+                  "OWASP-ASI02"
+                ],
+                "security-severity": "8.0",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-002",
+              "name": "CodexNeverAsksForApproval",
+              "shortDescription": {
+                "text": "Codex never asks for approval"
+              },
+              "fullDescription": {
+                "text": "approval_policy = \"never\" disables the approval prompts: Codex never stops to ask before it runs a command, so nobody reviews an action before it happens. The sandbox still applies, which limits the damage. Combined with full access in the layers that apply (sandbox_mode = \"danger-full-access\", or default_permissions = \":danger-full-access\" when no loaded config file sets sandbox_mode, which takes precedence over permission profiles), as the --yolo flag does, there is neither a sandbox nor an approval and the finding is critical. User and project config files are checked, with project config over user config; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"never\" (allowed_approval_policies)."
+              },
+              "help": {
+                "text": "Use approval_policy = \"on-request\" (or a granular table that keeps the prompts you need), and never combine \"never\" with danger-full-access outside an isolated container or VM. Restrict the allowed values with allowed_approval_policies in requirements.toml."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/agent-approvals-security",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "approvals",
+                  "codex",
+                  "OWASP-ASI02"
+                ],
+                "security-severity": "5.5",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-003",
+              "name": "CodexWorkspaceWriteSandboxHasNetworkAccess",
+              "shortDescription": {
+                "text": "Codex workspace-write sandbox has network access"
+              },
+              "fullDescription": {
+                "text": "sandbox_workspace_write.network_access = true allows outbound network access inside the workspace-write sandbox, which keeps it off by default. Every command the agent runs without a prompt can then download code or send workspace content, credentials included, to any host. The rule checks user and project config files, with project config over user config, and is silent when the sandbox mode that applies is read-only or danger-full-access (AW-CDX-001), and when the layers use permission profiles instead: default_permissions is set and no loaded config file sets sandbox_mode, or requirements.toml has allowed_permission_profiles. The two systems do not compose, so Codex then ignores [sandbox_workspace_write]; the network of a permission profile is checked by AW-CDX-004."
+              },
+              "help": {
+                "text": "Remove network_access (default false) and approve network access per command, or use a permission profile with the network proxy and an allowlist of domains (permissions.\u003cname\u003e.network.domains)."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/agent-approvals-security",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI02",
+                  "OWASP-ASI05"
+                ],
+                "security-severity": "5.5",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-004",
+              "name": "CodexPermissionProfileAllowsUnrestrictedNetworkAccess",
+              "shortDescription": {
+                "text": "Codex permission profile allows unrestricted network access"
+              },
+              "fullDescription": {
+                "text": "Flags permission profiles ([permissions.\u003cname\u003e], a beta feature) whose network is enabled while the network proxy is off, with mode = \"full\", or with the global \"*\" = \"allow\" domain rule, and a network proxy ([features.network_proxy]) that allows \"*\". network.enabled = true does not start the proxy: without features.network_proxy = true (or features.network_proxy.enabled = true) in the layers where the profile applies, or a managed experimental_network.enabled = true, the documentation says commands have direct, unrestricted network access and the profile domain rules are not enforced. The documentation keeps the global allow rule for cases where public network access is intended; while the network proxy is active, the other rules limit sandboxed commands to the listed domains. The documentation lists the limited and full modes without describing what limited blocks, so confidence is medium."
+              },
+              "help": {
+                "text": "Turn the network proxy on (features.network_proxy = true), leave mode at \"limited\" and list the domains the commands need under permissions.\u003cname\u003e.network.domains (deny rules win), instead of \"*\" = \"allow\"."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/permissions",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI02"
+                ],
+                "security-severity": "5.5",
+                "precision": "medium"
+              }
+            },
+            {
+              "id": "AW-CDX-005",
+              "name": "CodexCanWriteToAVeryBroadFolder",
+              "shortDescription": {
+                "text": "Codex can write to a very broad folder"
+              },
+              "fullDescription": {
+                "text": "Flags writable roots and permission profile entries that give sandboxed commands write access to the home directory, a profile folder, a drive root, a network share root or the file system root: sandbox_workspace_write.writable_roots, permissions.\u003cname\u003e.filesystem entries set to \"write\" (including \":root\" and scoped \".\" entries), and broad permissions.\u003cname\u003e.workspace_roots in a profile that can write its workspace roots. The agent can then change credentials, and shell startup files, scripts and package manager hooks (targets the documentation calls sensitive), outside the project and without a prompt. Only .git, .codex, .agents and .aws folders stay protected inside writable roots."
+              },
+              "help": {
+                "text": "List only the folders the task needs (a build or cache folder of the project, for example), and keep the home directory and drive roots read-only."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/permissions",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI02",
+                  "OWASP-ASI05"
+                ],
+                "security-severity": "8.0",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-006",
+              "name": "CodexNetworkProxySafetyCheckTurnedOff",
+              "shortDescription": {
+                "text": "Codex network proxy safety check turned off"
+              },
+              "fullDescription": {
+                "text": "Flags the dangerously_* network options set to true, under [features.network_proxy] or permissions.\u003cname\u003e.network (the names are in src/Data/codex.json). dangerously_allow_all_unix_sockets bypasses the Unix socket allowlist, a broad local escape hatch (the Docker socket, for example, controls the host). dangerously_allow_non_loopback_proxy lets the sandbox proxy listen beyond localhost, where other machines can reach it. Both default to false: the documentation keeps the first for tightly controlled environments and says to leave the second unset for ordinary local development."
+              },
+              "help": {
+                "text": "Remove the dangerously_* options. Allow the Unix sockets the commands need one by one under unix_sockets, and keep the proxy on loopback addresses."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/permissions",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI05",
+                  "OWASP-ASI02"
+                ],
+                "security-severity": "5.5",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-007",
+              "name": "CodexPassesEveryEnvironmentVariableSecretsIncludedToCommands",
+              "shortDescription": {
+                "text": "Codex passes every environment variable, secrets included, to commands"
+              },
+              "fullDescription": {
+                "text": "shell_environment_policy.inherit = \"all\" gives every command the agent runs the whole environment of the Codex process. ignore_default_excludes defaults to true, which keeps the variables whose names contain KEY, SECRET or TOKEN, so without exclude filters (filters entries set to \"exclude\", or the legacy exclude list) or an include allowlist (filters entries set to \"include\", or include_only), API keys and tokens reach every command and anything a prompt injection makes it print. The rule checks user, project and profile config files and is silent when ignore_default_excludes = false or a filter restricts the variables."
+              },
+              "help": {
+                "text": "Use inherit = \"core\" (or \"none\"), set ignore_default_excludes = false, and add [shell_environment_policy.filters] entries that exclude the secrets the commands do not need."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/config-file/config-advanced",
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "secrets",
+                  "codex",
+                  "OWASP-ASI03"
+                ],
+                "security-severity": "3.0",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-008",
+              "name": "CodexMCPToolsRunWithoutApproval",
+              "shortDescription": {
+                "text": "Codex MCP tools run without approval"
+              },
+              "fullDescription": {
+                "text": "Flags MCP servers whose default_tools_approval_mode is \"approve\" (every tool of the server, high) and tools whose approval_mode is \"approve\" (one tool, medium), under mcp_servers.\u003cid\u003e and plugins.\u003cplugin\u003e.mcp_servers.\u003cid\u003e. Tool calls then run without a prompt, so a prompt injection can make the agent write, send or delete data through them. The documentation lists the values auto, prompt, writes and approve and describes only writes (it prompts for tools not marked read-only); auto is the built-in fallback. It also says that a tool call that advertises a destructive annotation always requires approval, unless the tool also advertises a read annotation, without saying whether approve overrides that. That approve skips the prompt is inferred from its name and from the documentation example, so confidence is medium."
+              },
+              "help": {
+                "text": "Use default_tools_approval_mode = \"writes\" (or \"prompt\"), and set approval_mode = \"approve\" only on read-only tools you trust, never on tools that write, send or delete."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/extend/mcp",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "approvals",
+                  "codex",
+                  "OWASP-ASI02"
+                ],
+                "security-severity": "8.0",
+                "precision": "medium"
+              }
+            },
+            {
+              "id": "AW-CDX-009",
+              "name": "SecretStoredInACodexConfigFile",
+              "shortDescription": {
+                "text": "Secret stored in a Codex config file"
+              },
+              "fullDescription": {
+                "text": "Flags literal values of mcp_servers.\u003cid\u003e.oauth.client_secret (the documentation says it is stored in the configuration and asks to keep the file private and out of version control) and model_providers.\u003cid\u003e.experimental_bearer_token (a direct bearer token, discouraged in favor of env_key). Anyone, or any agent, tool or backup, that reads the file gets the secret. The finding is critical in the project .codex/config.toml, which is usually committed. Values are always masked. Static MCP headers (http_headers) and env values are checked by AW-MCP-002."
+              },
+              "help": {
+                "text": "Remove the value and rotate the secret. Use env_key for model providers, bearer_token_env_var or env_http_headers for MCP servers, and keep any client secret in the user config file only, out of version control."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/extend/mcp",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "secrets",
+                  "codex",
+                  "OWASP-ASI03"
+                ],
+                "security-severity": "8.0",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-010",
+              "name": "CodexTrustsAFolderThatIsTooBroad",
+              "shortDescription": {
+                "text": "Codex trusts a folder that is too broad"
+              },
+              "fullDescription": {
+                "text": "projects.\u003cpath\u003e.trust_level = \"trusted\" makes Codex load the project .codex/ layers of that folder: its config, which can change the sandbox, the approvals and the MCP servers, its hooks and its rules. Trusting the home directory, a profile folder, a drive root or the file system root extends that trust to whatever is placed there, and a session started there can work on every repository and credential below it. Whether trust also covers sub-folders is not documented, so confidence is medium. User config and profile files are checked."
+              },
+              "help": {
+                "text": "Remove the broad entry (or set trust_level = \"untrusted\") and trust each project folder on its own. Do not start Codex from the home directory or a drive root."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/config-file/config-basic",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "approvals",
+                  "codex",
+                  "OWASP-ASI03",
+                  "OWASP-ASI04"
+                ],
+                "security-severity": "8.0",
+                "precision": "medium"
+              }
+            },
+            {
+              "id": "AW-CDX-011",
+              "name": "CodexLiveWebSearchIsEnabled",
+              "shortDescription": {
+                "text": "Codex live web search is enabled"
+              },
+              "fullDescription": {
+                "text": "web_search = \"live\" gives the agent unrestricted live retrieval of web pages, instead of the default \"cached\" mode that answers from an OpenAI-maintained index without external web access. Every page the agent reads can carry a prompt injection, and search queries can carry workspace data out. User and project config files are checked; profiles are checked by AW-CDX-014. The finding is info when requirements.toml does not allow \"live\" (allowed_web_search_modes)."
+              },
+              "help": {
+                "text": "Keep web_search = \"cached\" (the default), or \"indexed\", and use live search only in sessions that need it (--search). Restrict it with allowed_web_search_modes in requirements.toml."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/config-file/config-basic",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI01"
+                ],
+                "security-severity": "5.5",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-012",
+              "name": "ProjectCodexHooksRunCommands",
+              "shortDescription": {
+                "text": "Project Codex hooks run commands"
+              },
+              "fullDescription": {
+                "text": "Lists the command and MCP tool hooks of the project .codex/hooks.json and of the [hooks] tables of the project .codex/config.toml. They run on agent events, with your rights, in every Codex session of the repository once the project is trusted, and anyone who can change the repository can change them. Codex asks you to review and trust each non-managed hook, and records that trust against the hook hash, so a changed hook needs a new review. The rule is silent when hooks are turned off (features.hooks = false, or the deprecated features.codex_hooks, project config over user config) or when requirements.toml sets allow_managed_hooks_only = true or features.hooks = false."
+              },
+              "help": {
+                "text": "Review every hook command and the scripts it calls before you trust it, protect .codex/ with CODEOWNERS and required reviews, and keep personal hooks in ~/.codex/hooks.json. Set allow_managed_hooks_only = true in requirements.toml where repository hooks are not needed."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/hooks",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "mcp-supply-chain",
+                  "codex",
+                  "OWASP-ASI04",
+                  "OWASP-ASI05"
+                ],
+                "security-severity": "5.5",
+                "precision": "high"
+              }
+            },
+            {
+              "id": "AW-CDX-013",
+              "name": "ProjectCodexRulesAllowCommandsOutsideTheSandbox",
+              "shortDescription": {
+                "text": "Project Codex rules allow commands outside the sandbox"
+              },
+              "fullDescription": {
+                "text": "Lists the prefix_rule() entries of the project .codex/rules/*.rules files whose decision is \"allow\", explicitly or by default (allow is the default decision). A matching command runs outside the sandbox without a prompt, and the rules load as soon as the project is trusted, so anyone who can change the repository can widen what the agent runs unattended. The Starlark files are not evaluated: calls are found by name, outside comments, so computed patterns are not resolved and confidence is medium. Rules are an experimental feature; when several rules match, the most restrictive decision wins."
+              },
+              "help": {
+                "text": "Review every allow rule of the repository, keep allow rules for narrow, read-only commands, prefer decision = \"prompt\", and protect .codex/ with CODEOWNERS and required reviews. Keep personal rules in ~/.codex/rules/."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/agent-configuration/rules",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "mcp-supply-chain",
+                  "codex",
+                  "OWASP-ASI04",
+                  "OWASP-ASI02"
+                ],
+                "security-severity": "5.5",
+                "precision": "medium"
+              }
+            },
+            {
+              "id": "AW-CDX-014",
+              "name": "CodexProfileWeakensTheSandboxOrTheApprovals",
+              "shortDescription": {
+                "text": "Codex profile weakens the sandbox or the approvals"
+              },
+              "fullDescription": {
+                "text": "Checks the profile files (\u003ccodex home\u003e/\u003cname\u003e.config.toml, selected with --profile \u003cname\u003e) for settings that weaken the defaults: sandbox_mode = \"danger-full-access\", default_permissions = \":danger-full-access\", approval_policy = \"never\", sandbox_workspace_write.network_access = true and web_search = \"live\". One --profile flag then switches a session to that configuration. A profile is evaluated with the layers it applies with, in the documented precedence project config \u003e profile \u003e user config: the config.toml of its Codex home below it, alone and under each project .codex/config.toml. A profile setting counts only where it applies (sandbox_mode in any of these files takes precedence over default_permissions, and [sandbox_workspace_write] is ignored with permission profiles). The finding is high when, with the profile, neither the sandbox nor the approvals remain, whichever of these files removes each one (the evidence names the other file); it is not when requirements.toml forbids the value. Legacy [prof..."
+              },
+              "help": {
+                "text": "Remove the weakening settings from the profile, or delete the profile, and run sessions that need broad access only inside an isolated container or VM. Delete legacy [profiles.\u003cname\u003e] tables from config.toml."
+              },
+              "helpUri": "https://learn.chatgpt.com/docs/config-file/config-advanced",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "sandbox-network",
+                  "codex",
+                  "OWASP-ASI02",
+                  "OWASP-ASI05"
+                ],
+                "security-severity": "5.5",
+                "precision": "high"
+              }
+            },
+            {
               "id": "AW-MCP-001",
               "name": "MCPServerLaunchedWithoutAPinnedVersion",
               "shortDescription": {
@@ -994,7 +1366,7 @@
                 "text": "Hard-coded password, secret or token value"
               },
               "fullDescription": {
-                "text": "A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references (${input:...}, $VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct characters) are ignored; the remaining matches may still include false positives."
+                "text": "A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references (${input:...}, $VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct characters) are ignored, and so are the values of the env_http_headers, bearer_token_env_var and env_vars keys of Codex MCP servers, which name environment variables (unless the value is not a valid variable name or also appears elsewhere in the file). The remaining matches may still include false positives."
               },
               "help": {
                 "text": "Revoke the secret and issue a new one, remove it from the file and from the Git history, and load it at run time instead: an input variable in .vscode/mcp.json (${input:...} with \"password\": true), or an environment variable set outside the repository."
@@ -1764,7 +2136,7 @@
       "invocations": [
         {
           "executionSuccessful": true,
-          "endTimeUtc": "2026-10-18T23:40:32Z"
+          "endTimeUtc": "2026-10-19T05:57:37Z"
         }
       ],
       "originalUriBaseIds": {
@@ -1804,8 +2176,64 @@
           }
         },
         {
-          "ruleId": "AW-MCP-002",
+          "ruleId": "AW-CDX-002",
           "ruleIndex": 24,
+          "level": "error",
+          "message": {
+            "text": "Codex never asks for approval. Evidence: approval_policy = \"never\" (project config); with sandbox_mode = \"danger-full-access\" (project config): no sandbox and no approval"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "critical",
+            "category": "approvals",
+            "harness": "codex",
+            "confidence": "high",
+            "key": "approval_policy"
+          }
+        },
+        {
+          "ruleId": "AW-CDX-009",
+          "ruleIndex": 31,
+          "level": "error",
+          "message": {
+            "text": "Secret stored in a Codex config file. Evidence: mcp_servers.tracker.oauth.client_secret = FAKE…07 (29 chars) (project config)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 22
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "critical",
+            "category": "secrets",
+            "harness": "codex",
+            "confidence": "high",
+            "key": "mcp_servers.tracker.oauth.client_secret"
+          }
+        },
+        {
+          "ruleId": "AW-MCP-002",
+          "ruleIndex": 38,
           "level": "error",
           "message": {
             "text": "Hardcoded secret in an MCP server configuration. Evidence: server \u0027fetch-anything\u0027: env GITHUB_TOKEN = ghp_…34 (40 chars)"
@@ -1833,7 +2261,7 @@
         },
         {
           "ruleId": "AW-VSC-001",
-          "ruleIndex": 39,
+          "ruleIndex": 53,
           "level": "error",
           "message": {
             "text": "Global auto-approval of tools enabled. Evidence: chat.tools.global.autoApprove = true (set in workspace settings .vscode\\settings.json)"
@@ -1861,7 +2289,7 @@
         },
         {
           "ruleId": "AW-VSC-003",
-          "ruleIndex": 41,
+          "ruleIndex": 55,
           "level": "error",
           "message": {
             "text": "Terminal command auto-approval enabled. Evidence: chat.tools.terminal.enableAutoApprove = true; catch-all allow rule \u0027/.*/\u0027; Windows host and chat.agent.sandbox.enabled is not \"on\", so approved commands run unsandboxed (set in workspace settings .vscode\\settings.json)"
@@ -1889,7 +2317,7 @@
         },
         {
           "ruleId": "AW-VSC-004",
-          "ruleIndex": 42,
+          "ruleIndex": 56,
           "level": "error",
           "message": {
             "text": "Catch-all or broad terminal allow rule. Evidence: chat.tools.terminal.autoApprove \"/.*/\": true approves any command line (set in workspace settings .vscode\\settings.json)"
@@ -1999,8 +2427,92 @@
           }
         },
         {
-          "ruleId": "AW-MCP-001",
+          "ruleId": "AW-CDX-001",
           "ruleIndex": 23,
+          "level": "error",
+          "message": {
+            "text": "Codex runs commands without a sandbox. Evidence: sandbox_mode = \"danger-full-access\" (project config)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "high",
+            "category": "sandbox-network",
+            "harness": "codex",
+            "confidence": "high",
+            "key": "sandbox_mode"
+          }
+        },
+        {
+          "ruleId": "AW-CDX-008",
+          "ruleIndex": 30,
+          "level": "error",
+          "message": {
+            "text": "Codex MCP tools run without approval. Evidence: mcp_servers.repo-tools.default_tools_approval_mode = \"approve\": every tool of the server runs without a prompt (project config)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 15
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "high",
+            "category": "approvals",
+            "harness": "codex",
+            "confidence": "medium",
+            "key": "mcp_servers.repo-tools.default_tools_approval_mode"
+          }
+        },
+        {
+          "ruleId": "AW-MCP-001",
+          "ruleIndex": 37,
+          "level": "error",
+          "message": {
+            "text": "MCP server launched without a pinned version. Evidence: server \u0027repo-tools\u0027: npx runs \u0027@example/mcp-repo-tools\u0027 without a pinned version (npx -y @example/mcp-repo-tools)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "high",
+            "category": "mcp-supply-chain",
+            "harness": "mcp",
+            "confidence": "high",
+            "key": "repo-tools.command"
+          }
+        },
+        {
+          "ruleId": "AW-MCP-001",
+          "ruleIndex": 37,
           "level": "error",
           "message": {
             "text": "MCP server launched without a pinned version. Evidence: server \u0027git-tools\u0027: uvx runs \u0027example-mcp-server-git\u0027 without a pinned version (uvx example-mcp-server-git)"
@@ -2028,7 +2540,7 @@
         },
         {
           "ruleId": "AW-MCP-001",
-          "ruleIndex": 23,
+          "ruleIndex": 37,
           "level": "error",
           "message": {
             "text": "MCP server launched without a pinned version. Evidence: server \u0027shell\u0027: npx runs \u0027@example/mcp-shell\u0027 without a pinned version (npx -y @example/mcp-shell)"
@@ -2056,7 +2568,7 @@
         },
         {
           "ruleId": "AW-MCP-001",
-          "ruleIndex": 23,
+          "ruleIndex": 37,
           "level": "error",
           "message": {
             "text": "MCP server launched without a pinned version. Evidence: server \u0027fetch-anything\u0027: npx runs \u0027@example/mcp-server-fetch@latest\u0027 without a pinned version (npx -y @example/mcp-server-fetch@latest)"
@@ -2084,7 +2596,7 @@
         },
         {
           "ruleId": "AW-MCP-003",
-          "ruleIndex": 25,
+          "ruleIndex": 39,
           "level": "error",
           "message": {
             "text": "Remote MCP server reached over cleartext HTTP. Evidence: server \u0027remote-tools\u0027: url http://mcp.example.invalid/mcp (unencrypted)"
@@ -2112,7 +2624,7 @@
         },
         {
           "ruleId": "AW-SEC-001",
-          "ruleIndex": 29,
+          "ruleIndex": 43,
           "level": "error",
           "message": {
             "text": "GitHub token in a configuration file. Evidence: GitHub token: ghp_…34 (40 chars)"
@@ -2140,7 +2652,7 @@
         },
         {
           "ruleId": "AW-VSC-002",
-          "ruleIndex": 40,
+          "ruleIndex": 54,
           "level": "error",
           "message": {
             "text": "Default permission level skips approvals. Evidence: chat.permissions.default = \"autoApprove\"; Allow all: no confirmation for any tool call (set in workspace settings .vscode\\settings.json)"
@@ -2168,7 +2680,7 @@
         },
         {
           "ruleId": "AW-VSC-005",
-          "ruleIndex": 43,
+          "ruleIndex": 57,
           "level": "error",
           "message": {
             "text": "Risky command auto-approved in the terminal. Evidence: chat.tools.terminal.autoApprove \"npx\": true auto-approves \u0027npx\u0027 (set in workspace settings .vscode\\settings.json)"
@@ -2196,7 +2708,7 @@
         },
         {
           "ruleId": "AW-VSC-005",
-          "ruleIndex": 43,
+          "ruleIndex": 57,
           "level": "error",
           "message": {
             "text": "Risky command auto-approved in the terminal. Evidence: chat.tools.terminal.autoApprove \"Invoke-WebRequest\": true auto-approves \u0027Invoke-WebRequest\u0027 (set in workspace settings .vscode\\settings.json)"
@@ -2224,7 +2736,7 @@
         },
         {
           "ruleId": "AW-VSC-005",
-          "ruleIndex": 43,
+          "ruleIndex": 57,
           "level": "error",
           "message": {
             "text": "Risky command auto-approved in the terminal. Evidence: chat.tools.terminal.autoApprove \"git push\": true auto-approves \u0027git push\u0027 (set in workspace settings .vscode\\settings.json)"
@@ -2252,7 +2764,7 @@
         },
         {
           "ruleId": "AW-VSC-007",
-          "ruleIndex": 45,
+          "ruleIndex": 59,
           "level": "error",
           "message": {
             "text": "Built-in terminal approval rules ignored. Evidence: chat.tools.terminal.ignoreDefaultAutoApproveRules = true; built-in deny rules such as rm, curl and Remove-Item no longer apply (set in workspace settings .vscode\\settings.json)"
@@ -2280,7 +2792,7 @@
         },
         {
           "ruleId": "AW-VSC-009",
-          "ruleIndex": 47,
+          "ruleIndex": 61,
           "level": "error",
           "message": {
             "text": "Edit auto-approval covers agent control files. Evidence: chat.tools.edits.autoApprove \"**/*\": true is a broad pattern and auto-approves edits to \u0027.vscode/settings.json\u0027, \u0027.vscode/tasks.json\u0027, \u0027.vscode/mcp.json\u0027, \u0027.github/agents/reviewer.agent.md\u0027, \u0027docs/helper.agent.md\u0027, \u0027.github/copilot-instructions.md\u0027, \u0027.github/instructions/tests.instructions.md\u0027, \u0027.github/prompts/release.prompt.md\u0027, \u0027.github/workflows/ci.yml\u0027, \u0027.github/hooks/policy.json\u0027, \u0027.git/c... (set in workspace settings .vscode\\settings.json)"
@@ -2308,7 +2820,7 @@
         },
         {
           "ruleId": "AW-VSC-010",
-          "ruleIndex": 48,
+          "ruleIndex": 62,
           "level": "error",
           "message": {
             "text": "Wildcard URL auto-approval. Evidence: chat.tools.urls.autoApprove \"https://*\" auto-approves requests and responses for any host (set in workspace settings .vscode\\settings.json)"
@@ -2336,7 +2848,7 @@
         },
         {
           "ruleId": "AW-VSC-012",
-          "ruleIndex": 50,
+          "ruleIndex": 64,
           "level": "error",
           "message": {
             "text": "Agent sandbox disabled. Evidence: chat.agent.sandbox.enabled = \"off\"; Windows host: sandbox support is Experimental and Local harness terminal commands are not sandboxed (set in workspace settings .vscode\\settings.json)"
@@ -2364,7 +2876,7 @@
         },
         {
           "ruleId": "AW-VSC-019",
-          "ruleIndex": 57,
+          "ruleIndex": 71,
           "level": "error",
           "message": {
             "text": "Read access outside the workspace. Evidence: github.copilot.chat.additionalReadAccessFolders = [\"C:/\"]; includes a drive root or the home folder: \u0027C:/\u0027 (set in workspace settings .vscode\\settings.json)"
@@ -2392,7 +2904,7 @@
         },
         {
           "ruleId": "AW-VSC-025",
-          "ruleIndex": 63,
+          "ruleIndex": 77,
           "level": "error",
           "message": {
             "text": "Prompt content captured in telemetry. Evidence: github.copilot.chat.otel.captureContent = true; collector https://collector.example.invalid:4318 is not a local address (set in workspace settings .vscode\\settings.json)"
@@ -2558,8 +3070,92 @@
           }
         },
         {
+          "ruleId": "AW-CDX-011",
+          "ruleIndex": 33,
+          "level": "warning",
+          "message": {
+            "text": "Codex live web search is enabled. Evidence: web_search = \"live\" (project config)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "medium",
+            "category": "sandbox-network",
+            "harness": "codex",
+            "confidence": "high",
+            "key": "web_search"
+          }
+        },
+        {
+          "ruleId": "AW-CDX-012",
+          "ruleIndex": 34,
+          "level": "warning",
+          "message": {
+            "text": "Project Codex hooks run commands. Evidence: hook SessionStart command: ./scripts/bootstrap.sh"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 24
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "medium",
+            "category": "mcp-supply-chain",
+            "harness": "codex",
+            "confidence": "high",
+            "key": "hooks.SessionStart"
+          }
+        },
+        {
+          "ruleId": "AW-SEC-009",
+          "ruleIndex": 51,
+          "level": "warning",
+          "message": {
+            "text": "Hard-coded password, secret or token value. Evidence: Hard-coded value: FAKE…07 (29 chars)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 22
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "medium",
+            "category": "secrets",
+            "harness": "codex",
+            "confidence": "medium",
+            "key": "client_secret"
+          }
+        },
+        {
           "ruleId": "AW-VSC-006",
-          "ruleIndex": 44,
+          "ruleIndex": 58,
           "level": "warning",
           "message": {
             "text": "Windows exfiltration commands lack approval-required rules. Evidence: chat.tools.terminal.autoApprove has no approval-required (false) entry for \u0027iwr\u0027, \u0027Invoke-WebRequest\u0027, \u0027irm\u0027, \u0027Invoke-RestMethod\u0027, \u0027Start-BitsTransfer\u0027, \u0027curl.exe\u0027, \u0027certutil\u0027, \u0027bitsadmin\u0027, \u0027powershell (encoded command)\u0027, \u0027pwsh (encoded command)\u0027; 4 custom allow rule(s). A false entry only forces approval, it does not block (set in workspace settings .vscode\\settings.json)"
@@ -2587,7 +3183,7 @@
         },
         {
           "ruleId": "AW-VSC-008",
-          "ruleIndex": 46,
+          "ruleIndex": 60,
           "level": "warning",
           "message": {
             "text": "Terminal prompts answered automatically. Evidence: chat.tools.terminal.autoReplyToPrompts = true (set in workspace settings .vscode\\settings.json)"
@@ -2615,7 +3211,7 @@
         },
         {
           "ruleId": "AW-VSC-013",
-          "ruleIndex": 51,
+          "ruleIndex": 65,
           "level": "warning",
           "message": {
             "text": "Unrestricted network egress. Evidence: chat.agent.sandbox.network.allowNetwork = true; chat.agent.networkFilter is off and no allowed domains are listed (sandbox off) (set in workspace settings .vscode\\settings.json)"
@@ -2643,7 +3239,7 @@
         },
         {
           "ruleId": "AW-VSC-021",
-          "ruleIndex": 59,
+          "ruleIndex": 73,
           "level": "warning",
           "message": {
             "text": "MCP server discovery from other applications. Evidence: chat.mcp.discovery.enabled = true (set in workspace settings .vscode\\settings.json)"
@@ -2671,7 +3267,7 @@
         },
         {
           "ruleId": "AW-VSC-023",
-          "ruleIndex": 61,
+          "ruleIndex": 75,
           "level": "warning",
           "message": {
             "text": "MCP server pre-authorized for sampling. Evidence: chat.mcp.serverSampling \"fetch-anything\" may request completions from any model (\"*\") (set in workspace settings .vscode\\settings.json)"
@@ -2726,8 +3322,36 @@
           }
         },
         {
+          "ruleId": "AW-CDX-007",
+          "ruleIndex": 29,
+          "level": "note",
+          "message": {
+            "text": "Codex passes every environment variable, secrets included, to commands. Evidence: shell_environment_policy.inherit = \"all\", no exclude or include filter, ignore_default_excludes not set (default true) (project config)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".codex/config.toml",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "low",
+            "category": "secrets",
+            "harness": "codex",
+            "confidence": "high",
+            "key": "shell_environment_policy.inherit"
+          }
+        },
+        {
           "ruleId": "AW-VSC-011",
-          "ruleIndex": 49,
+          "ruleIndex": 63,
           "level": "note",
           "message": {
             "text": "Terminal risk assessment disabled. Evidence: chat.tools.riskAssessment.enabled = false; the risk badge is an aid, not a security boundary (set in workspace settings .vscode\\settings.json)"
@@ -2755,7 +3379,7 @@
         },
         {
           "ruleId": "AW-VSC-020",
-          "ruleIndex": 58,
+          "ruleIndex": 72,
           "level": "note",
           "message": {
             "text": "High agent request limit. Evidence: chat.agent.maxRequests = 500; default 25 (set in workspace settings .vscode\\settings.json)"
@@ -2783,7 +3407,7 @@
         },
         {
           "ruleId": "AW-VSC-022",
-          "ruleIndex": 60,
+          "ruleIndex": 74,
           "level": "note",
           "message": {
             "text": "MCP servers start automatically. Evidence: chat.mcp.autostart = \"newAndOutdated\"; 4 MCP server(s) in .vscode\\mcp.json, .mcp.json (default value, not set in any settings file)"
@@ -2861,11 +3485,12 @@
         }
       ],
       "properties": {
-        "score": 20,
+        "score": 14,
         "grade": "F",
         "harnesses": [
           "vscode-copilot",
           "claude-code",
+          "codex",
           "mcp"
         ]
       }

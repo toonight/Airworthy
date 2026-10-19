@@ -614,9 +614,26 @@ function Get-AwMcpLine {
         $p = $Raw.IndexOf('"' + $projectPath + '"', [StringComparison]::Ordinal)
         if ($p -ge 0) { $start = $p }
     }
-    $at = $Raw.IndexOf('"' + $name + '"', $start, [StringComparison]::Ordinal)
+    # Codex config.toml: a [mcp_servers.<name>] table or mcp_servers.<name>.<key> dotted keys. Its
+    # keys are not quoted, so the line of the server is kept rather than looking for the needle.
+    $toml = $false
+    $at = -1
+    foreach ($header in @(('mcp_servers.' + $name), ('mcp_servers."' + $name + '"'), ("mcp_servers.'" + $name + "'"))) {
+        $from = $start
+        $tries = 0
+        while ($at -lt 0 -and $tries -lt 100) {
+            $i = $Raw.IndexOf($header, $from, [StringComparison]::Ordinal)
+            if ($i -lt 0) { break }
+            # The name must end there: 'mcp_servers.git' is not the start of 'mcp_servers.github'.
+            $end = $i + $header.Length
+            if ($end -ge $Raw.Length -or ' ]=.'.IndexOf($Raw[$end]) -ge 0 -or $Raw[$end] -eq "`t") { $at = $i } else { $from = $i + 1 }
+            $tries++
+        }
+        if ($at -ge 0) { $toml = $true; break }
+    }
+    if ($at -lt 0) { $at = $Raw.IndexOf('"' + $name + '"', $start, [StringComparison]::Ordinal) }
     if ($at -lt 0) { return $null }
-    if ($Needle) {
+    if ($Needle -and -not $toml) {
         $n = $Raw.IndexOf($Needle, $at, [StringComparison]::Ordinal)
         if ($n -ge 0) { $at = $n }
     }

@@ -1,0 +1,3 @@
+# Synthetic invalid TOML (Airworthy test fixture): the string on line 3 is not closed.
+sandbox_mode = "workspace-write"
+approval_policy = "never

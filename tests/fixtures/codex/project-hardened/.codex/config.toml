@@ -1,0 +1,14 @@
+# Synthetic project Codex configuration, HARDENED (Airworthy test fixture).
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+
+[sandbox_workspace_write]
+network_access = false
+
+[mcp_servers.docs]
+url = "https://mcp.example.invalid/mcp"
+bearer_token_env_var = "DOCS_MCP_TOKEN"
+default_tools_approval_mode = "prompt"
+
+[features]
+hooks = false

@@ -24,6 +24,7 @@ airworthy.ps1                 wrapper: imports the module, calls Invoke-Airworth
 Airworthy.psd1                manifest (version, exported function, metadata)
 Airworthy.psm1                loader: dot-sources src/Core/*.ps1, then src/Rules/*.ps1, then src/Output/*.ps1
 src/Core/Jsonc.ps1            JSONC parser
+src/Core/Toml.ps1             TOML parser for Codex CLI configuration files
 src/Core/Frontmatter.ps1      YAML frontmatter parser for agent files
 src/Core/Model.ps1            constants, rule registry, findings, untrusted-regex helpers, data files
 src/Core/Discovery.ps1        file discovery and the analysis context
@@ -31,7 +32,7 @@ src/Core/Settings.ps1         VS Code defaults and effective settings
 src/Core/Redact.ps1           secret masking, path display and -Redact helpers
 src/Core/Scoring.ps1          category scores, overall score and grade
 src/Core/Engine.ps1           Invoke-Airworthy
-src/Rules/*.ps1               rules: VSCode.Settings, AgentFiles, Secrets, Mcp, ClaudeCode, CopilotCli
+src/Rules/*.ps1               rules: VSCode.Settings, AgentFiles, Secrets, Mcp, ClaudeCode, CopilotCli, Codex
 src/Data/*.json               rule data: command names, flags and keywords, as separate tokens
 src/Output/*.ps1              Console, Json, Sarif, Markdown, Html renderers
 src/Output/Html/              report.css, report.js and body.html, inlined into the HTML report
@@ -51,9 +52,9 @@ module. A file of `src/Rules` or `src/Output` that fails to load is recorded, re
 | Severities | `critical`, `high`, `medium`, `low`, `info` |
 | Severity weights | critical 40, high 20, medium 8, low 3, info 0 |
 | Categories (weight) | `approvals` (25), `sandbox-network` (20), `mcp-supply-chain` (20), `agent-files` (15), `secrets` (15), `observability` (5) |
-| Harnesses | `vscode-copilot`, `claude-code`, `copilot-cli`, `mcp`, `generic` |
+| Harnesses | `vscode-copilot`, `claude-code`, `copilot-cli`, `codex`, `mcp`, `generic` |
 | Confidence | `high`, `medium` (and `low`, unused so far) |
-| Rule IDs | `^AW-(CORE\|VSC\|AGT\|SEC\|MCP\|CC\|CLI)-[0-9]{3}$` |
+| Rule IDs | `^AW-(CORE\|VSC\|AGT\|SEC\|MCP\|CC\|CLI\|CDX)-[0-9]{3}$` |
 
 ### Rules
 
@@ -106,6 +107,28 @@ needs it fail to load, which is reported as `AW-CORE-002`.
   last one wins. Maximum depth: 64.
 - Invalid input throws a clear error with its line number, which discovery turns into `AW-CORE-001`.
 
+### TOML (`ConvertFrom-AwToml`)
+
+- Parses TOML 1.0 for the Codex CLI configuration files: comments; bare, quoted and dotted keys;
+  `[table]` and `[[array.of.tables]]` headers; inline tables; multi-line arrays with comments and
+  trailing commas; basic, literal and multi-line strings with their escapes; decimal,
+  hexadecimal, octal and binary integers with underscores; floats (including `inf` and `nan`);
+  booleans; and offset or local date-times, dates and times.
+- Tables become **case-sensitive** hashtables and arrays (and arrays of tables) `object[]`, as with
+  the JSONC parser, so the rules read both formats the same way. Integers are `[long]`, floats
+  `[double]`, booleans `[bool]`. Dates and times stay `[string]`, with their original text, so no
+  conversion depends on the culture or the .NET version. Newlines in multi-line strings become LF.
+- A **linear scanner** reads the text once. Its regexes are runs of character classes, anchored
+  with `\G` or matched against one bounded token, with every repetition atomic, so no input can
+  make them backtrack. Arrays and inline tables use an explicit stack.
+- What TOML forbids is an error, not "last one wins": a duplicate key, a table defined twice, a
+  key reused as a table, an invalid escape or an unterminated string. Errors are
+  `FormatException`s with `Data['Line']` and `Data['Column']`; discovery masks token-like words in
+  the message and turns it into `AW-CORE-001`.
+- Bounded for hostile files: 2 MB of text, 64 nested tables and arrays below the root table, and
+  a budget of 20,000 parse steps (about one per key part, value, header, string and escape), which
+  bounds the parse time whatever the document holds.
+
 ### Frontmatter (`Read-AwFrontmatter`)
 
 - Returns `@{ Frontmatter = <hashtable>; Body = <string> }`. A file without `---` frontmatter
@@ -137,16 +160,18 @@ one, or `-UserProfilePath`. `-UserSettingsPath` forces the VS Code user settings
 | `UserProfile` | Profile folder, or `$null` with `-NoUserProfile`. |
 | `Harnesses` | Detected harnesses (see below). |
 | `VSCode` | `UserSettings`, `WorkspaceSettings`, `WorkspaceFiles` and `Effective` (the merged settings). |
-| `McpFiles` | MCP artifacts of every client, each with `Data.Servers` (name to server). |
+| `McpFiles` | MCP artifacts of every client, each with `Data.Servers` (name to server), including the `mcp_servers` tables of Codex config files. |
 | `AgentFiles` | Custom agents, chat modes, instructions, prompt files, `AGENTS.md`, Claude agents and `CLAUDE.md`. |
-| `Hooks` | `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, and Claude Code project settings that declare hooks. |
+| `Hooks` | `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, Claude Code project settings that declare hooks, and the Codex project `.codex/hooks.json`. |
 | `ClaudeSettings` | Claude Code settings with their scope: `project`, `local`, `user`, `managed`. |
 | `CopilotCli` | Copilot CLI settings with their scope: `project`, `local`, `user`. |
+| `Codex` | Codex CLI config files (parsed TOML) with their scope: `user`, `project`, `profile`, `managed` (`requirements.toml`). |
+| `CodexRules` | Codex project `.codex/rules/*.rules` files, as text (`Data` is `$null`: the Starlark files are never evaluated). |
 | `TextFiles` | Files to scan for secrets: every artifact above plus the root `.env*` files. |
 | `Errors` | `AW-CORE-001` findings produced during discovery. |
 
 An **artifact** is `{ Path; Scope; Harness; Raw; Data }`, where `Raw` is the file text and `Data`
-the parsed JSONC (or `$null` when it is invalid). An **agent file** is
+the parsed JSONC, or TOML for Codex files (`$null` when the file is invalid). An **agent file** is
 `{ Path; Kind; Scope; Frontmatter; Body; Raw }`. Absent data is `$null` or an empty array, never a
 missing property.
 
@@ -157,10 +182,31 @@ missing property.
 | VS Code | `.vscode/settings.json`, `*.code-workspace` (`settings` key), `.vscode/mcp.json`, `.github/agents/*.agent.md`, `.github/chatmodes/*.chatmode.md`, `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, `.github/prompts/*.prompt.md`, `.github/hooks/*.json` | `Code/User` and `Code - Insiders/User`: `settings.json` and `mcp.json` |
 | Claude Code | `.claude/settings.json`, `.claude/settings.local.json`, `.claude/agents/*.md`, `CLAUDE.md`, `.mcp.json` | `~/.claude/settings.json`, `~/.claude.json` (`mcpServers` and `projects.*.mcpServers`), and the machine-wide `managed-settings.json` (real profile only: `%ProgramFiles%\ClaudeCode\` on Windows) |
 | Copilot CLI | `.github/copilot/settings.json`, `.github/copilot/settings.local.json`, `.github/mcp.json` | `~/.copilot/config.json`, `~/.copilot/settings.json`, `~/.copilot/mcp-config.json`, `~/.copilot/agents/*.agent.md`, `~/.copilot/hooks/*.json` |
+| Codex CLI | `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/*.rules` | In each Codex home: `config.toml` and the profile files `<name>.config.toml`; the machine-wide `requirements.toml` (real profile only: `%ProgramData%\OpenAI\Codex\` on Windows, `/etc/codex/` elsewhere) |
 | Any | `AGENTS.md`, root `.env*` files | |
 
-MCP server lists are normalized from the `servers` key (VS Code) or the `mcpServers` key
-(Claude Code and Copilot CLI).
+MCP server lists are normalized from the `servers` key (VS Code), the `mcpServers` key
+(Claude Code and Copilot CLI) or the `mcp_servers` tables (Codex CLI, user, project and profile
+files). Codex servers keep their `command`, `args`, `env` and `url` keys, which have the same
+meaning, and their `http_headers` table is read as `headers`, so the `AW-MCP` rules apply to them
+unchanged.
+
+#### Codex CLI
+
+- **Codex homes.** `<profile>/.codex` is always a Codex home. With the real profile only, the
+  `CODEX_HOME` environment variable adds a first home when it names an existing absolute folder;
+  `<profile>/.codex` is still read after it. With `-UserProfilePath`, `CODEX_HOME` is ignored, so
+  tests never depend on the machine.
+- **Profile files.** Only `<name>.config.toml` files whose name has letters, digits, `-` and `_`
+  are read, with the `profile` scope. They apply only with `--profile <name>`, so the rules check
+  each one with the layers it applies with (see Effective settings).
+- **requirements.toml** is read with the `managed` scope, on the real machine only.
+  `$script:AwCodexRequirementsOverride` replaces its location in tests.
+- **Hooks and rules.** The project `.codex/hooks.json` joins `Hooks` with the `codex` harness;
+  the `[hooks]` tables of the project `config.toml` are read from `Codex`. The project
+  `.codex/rules/*.rules` files go to `CodexRules` as text.
+- Every Codex file goes through the same helpers as the other files: size limit, read budget,
+  link checks, and `AW-CORE-001` for a file that cannot be read or parsed.
 
 ### Harness detection
 
@@ -169,6 +215,8 @@ MCP server lists are normalized from the `servers` key (VS Code) or the `mcpServ
   user settings.
 - `claude-code`: a `.claude/` folder or `CLAUDE.md`, or `~/.claude/` in the profile.
 - `copilot-cli`: `.github/copilot/`, or `~/.copilot/` in the profile.
+- `codex`: a `.codex/` folder, a Codex config file that was read, or a Codex home folder in the
+  profile.
 - `mcp`: at least one MCP configuration file.
 
 Rules of the `generic` harness always run; the others run only when their harness is detected.
@@ -207,13 +255,44 @@ Rules of the `generic` harness always run; the others run only when their harnes
   settings.
 - Copilot CLI settings follow **local > repository > user**.
 
+### Codex CLI
+
+- Rules that depend on a combination of settings, such as `approval_policy = "never"` with full
+  access (`AW-CDX-002`), network access in the `workspace-write` sandbox (`AW-CDX-003`) or a
+  permission profile network without the network proxy (`AW-CDX-004`), stack the project
+  `.codex/config.toml` over each user config file: **project > user**. A value then counts only
+  where it decides. A user file also applies alone, in the folders that have no project config.
+- Profile files apply only to the sessions started with `--profile`, so they are not merged into
+  those stacks. Each one gets its own stacks (`AW-CDX-004`, `AW-CDX-014`), in the documented
+  precedence **project > profile > user**: the profile over the user `config.toml` of its own
+  Codex home, alone and under each project config.
+- **Sandbox model.** Permission profiles (`default_permissions`, `[permissions]`) and the older
+  sandbox settings (`sandbox_mode`, `[sandbox_workspace_write]`) do not compose. In a stack, the
+  older settings apply when any file sets `sandbox_mode`, and permission profiles otherwise when a
+  file sets `default_permissions`; a managed `allowed_permission_profiles` table selects permission
+  profiles in every case. Full access is then the highest `sandbox_mode` or the highest
+  `default_permissions` of the system in use, and `[sandbox_workspace_write]` counts only with
+  the older settings.
+- **Network proxy.** It runs when the highest file that decides sets
+  `features.network_proxy = true` or `features.network_proxy.enabled = true` (a table without
+  `enabled` does not start it), or when `requirements.toml` sets `experimental_network.enabled = true`.
+- The other rules report a risky value in every file that sets it, since each file applies to
+  some sessions.
+- `requirements.toml` limits are applied on top: a value outside `allowed_sandbox_modes`,
+  `allowed_approval_policies`, `allowed_web_search_modes` or `allowed_permission_profiles` lowers
+  the matching finding to `info`, and `allow_managed_hooks_only = true` or `features.hooks = false`
+  silences the project hooks rule.
+- TOML keys and values are compared ordinally, as Codex does: a `Sandbox_Mode` key is not
+  `sandbox_mode`.
+
 ### Agent files
 
 - A custom agent's `tools` list grants its tools; a missing list or `'*'` grants every tool.
 - In a Local harness session, the `tools` of a prompt file take precedence over the tools of the
   custom agent it runs with, so a prompt file can widen an agent's tool set.
 
-Command-line flags and permissions granted during a session are invisible to a static analysis.
+Command-line flags (such as the Codex `--yolo`, `--sandbox` or `-c key=value`) and permissions
+granted during a session are invisible to a static analysis.
 
 ## Redaction (`src/Core/Redact.ps1`)
 
@@ -325,8 +404,8 @@ The only thing the page stores is the light or dark theme choice, in the browser
 - Tests reach internal functions through the module scope: `& (Get-Module Airworthy) { ... }`.
 - Fixtures are synthetic. Fake secrets match the real formats and are marked `FAKE`. Tests always
   pass `-NoUserProfile` or point `-UserProfilePath` at a fixture, so they never read a real profile.
-- The shared fixtures cover the whole tool: `insecure` (grade F), `mixed` (in between) and
-  `hardened` (grade A or B).
+- The shared fixtures cover the whole tool, Codex CLI included: `insecure` (grade F), `mixed` (in
+  between) and `hardened` (grade A or B).
 - `tests/Security.Tests.ps1` attacks the tool itself: a hostile repository whose values try to
   inject markup and scripts into the HTML report, secret masking in every format, embedded links
   in SARIF, junctions and link targets that leave the root, ReDoS with 2 MB lines and hostile

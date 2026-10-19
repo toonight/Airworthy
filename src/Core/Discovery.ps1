@@ -7,6 +7,9 @@ $script:AwMaxFilesPerGlob = 500
 $script:AwMaxTotalBytes   = 32MB   # read budget for one analysis (hostile repositories with many large files)
 # Test hook: when set, replaces the machine-wide managed-settings.json candidates.
 $script:AwManagedSettingsOverride = $null
+# Test hook: when set, replaces the machine-wide Codex requirements.toml candidates.
+$script:AwCodexRequirementsOverride = $null
+$script:AwCodexProfileNamePattern = '^[A-Za-z0-9_-]+\.config\.toml$'
 
 function Add-AwDiscoveryError {
     param($State, [string]$Path, [string]$Message, $Line = $null, [string]$Harness = 'generic')
@@ -131,6 +134,100 @@ function New-AwJsonArtifact {
         Add-AwDiscoveryError $State $Path $_.Exception.Message $line $Harness
     }
     [pscustomobject]@{ Path = (New-Object System.IO.FileInfo -ArgumentList $Path).FullName; Scope = $Scope; Harness = $Harness; Raw = $raw; Data = $data }
+}
+
+function New-AwTomlArtifact {
+    # Artifact for a TOML file (Codex CLI), or $null when the file is absent or unreadable.
+    param($State, [string]$Path, [string]$Scope, [string]$Harness, [switch]$AllowOutsideRoot)
+    if (-not [System.IO.File]::Exists($Path)) { return $null }
+    $raw = Read-AwSafeText -State $State -Path $Path -Harness $Harness -AllowOutsideRoot:$AllowOutsideRoot
+    if ($null -eq $raw) { return $null }
+    $data = $null
+    try {
+        $data = ConvertFrom-AwToml -Text $raw
+    } catch {
+        $line = $null
+        if ($_.Exception.Data.Contains('Line')) { $line = $_.Exception.Data['Line'] }
+        Add-AwDiscoveryError $State $Path (Hide-AwSecretsInText $_.Exception.Message) $line $Harness
+    }
+    [pscustomobject]@{ Path = (New-Object System.IO.FileInfo -ArgumentList $Path).FullName; Scope = $Scope; Harness = $Harness; Raw = $raw; Data = $data }
+}
+
+function Format-AwDiscoveryName {
+    # A key from a scanned file, cut and masked, for discovery error messages.
+    param([string]$Name)
+    if ($Name.Length -gt 80) { $Name = $Name.Substring(0, 80) + '...' }
+    return (Hide-AwSecretsInText $Name)
+}
+
+function New-AwCodexMcpArtifact {
+    <#
+    MCP artifact for the [mcp_servers.<id>] tables of a Codex config file, or $null when the file
+    has no mcp_servers key. Each server is mapped onto the shape the MCP rules read: command, args,
+    env and url keep their names (they are the same in Codex), http_headers becomes headers, and
+    the other Codex keys are kept as they are.
+    #>
+    param($State, $Artifact)
+    if ($null -eq $Artifact -or $Artifact.Data -isnot [System.Collections.IDictionary]) { return $null }
+    if (-not $Artifact.Data.Contains('mcp_servers')) { return $null }
+    $src = $Artifact.Data['mcp_servers']
+    $servers = New-AwOrdinalHashtable
+    if ($src -isnot [System.Collections.IDictionary]) {
+        Add-AwDiscoveryError $State $Artifact.Path "Invalid MCP configuration: 'mcp_servers' is not a table." (Find-AwLineNumber $Artifact.Raw 'mcp_servers') $Artifact.Harness
+    } else {
+        $names = [string[]]@($src.Keys)
+        [Array]::Sort($names, [StringComparer]::Ordinal)
+        foreach ($name in $names) {
+            $s = $src[$name]
+            if ($s -isnot [System.Collections.IDictionary]) {
+                Add-AwDiscoveryError $State $Artifact.Path ("Invalid MCP configuration: server '{0}' is not a table." -f (Format-AwDiscoveryName $name)) (Find-AwLineNumber $Artifact.Raw ('mcp_servers.' + $name)) $Artifact.Harness
+                continue
+            }
+            $server = New-AwOrdinalHashtable
+            foreach ($k in @($s.Keys)) { if ($k -cne 'headers') { $server[$k] = $s[$k] } }
+            if ($s['http_headers'] -is [System.Collections.IDictionary]) { $server['headers'] = $s['http_headers'] }
+            $servers[$name] = $server
+        }
+    }
+    $data = New-AwOrdinalHashtable
+    $data['Servers'] = $servers
+    [pscustomobject]@{ Path = $Artifact.Path; Scope = $Artifact.Scope; Harness = $Artifact.Harness; Raw = $Artifact.Raw; Data = $data }
+}
+
+function Get-AwCodexRequirementsCandidates {
+    # Machine-wide requirements.toml (managed-configuration, learn.chatgpt.com).
+    if ($null -ne $script:AwCodexRequirementsOverride) { return @($script:AwCodexRequirementsOverride) }
+    if ($script:AwIsWindowsOS) {
+        $pd = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
+        return @([System.IO.Path]::Combine([System.IO.Path]::Combine([System.IO.Path]::Combine($pd, 'OpenAI'), 'Codex'), 'requirements.toml'))
+    }
+    return @('/etc/codex/requirements.toml')
+}
+
+function Get-AwCodexHomes {
+    <#
+    Codex home folders to read, the active one first: CODEX_HOME when it is set to an existing
+    absolute folder and the real profile is analyzed (never with -UserProfilePath, so never in
+    tests), then <profile>/.codex.
+    #>
+    param([string]$UserProfile, [bool]$IsRealProfile)
+    $homes = New-Object System.Collections.Generic.List[string]
+    if (-not $UserProfile) { return @() }
+    $default = [System.IO.Path]::Combine($UserProfile, '.codex')
+    if ($IsRealProfile) {
+        $envHome = [string]$env:CODEX_HOME
+        if ($envHome.Trim() -ne '') {
+            $h = $envHome.Trim()
+            $rooted = $false
+            try { $rooted = [System.IO.Path]::IsPathRooted($h) } catch { $rooted = $false }
+            if ($rooted -and [System.IO.Directory]::Exists($h)) {
+                if ($h.Length -gt 3) { $h = $h.TrimEnd([char[]]@('\', '/')) }
+                if (-not [string]::Equals($h, $default, $script:AwPathComparison)) { $homes.Add($h) }
+            }
+        }
+    }
+    $homes.Add($default)
+    return $homes.ToArray()
 }
 
 function Add-AwMcpServers {
@@ -382,6 +479,44 @@ function New-AwContext {
         }
     }
 
+    # --- Codex CLI ----------------------------------------------------------------------
+    # config-basic, config-advanced, hooks, rules and managed-configuration (learn.chatgpt.com):
+    # user ~/.codex/config.toml (or $CODEX_HOME), project .codex/config.toml, profile files
+    # <codex home>/<name>.config.toml, machine-wide requirements.toml, project .codex/hooks.json
+    # and project .codex/rules/*.rules.
+    $codex = New-Object System.Collections.ArrayList
+    $codexRules = New-Object System.Collections.ArrayList
+    $codexHomes = @(Get-AwCodexHomes -UserProfile $userProfile -IsRealProfile $isRealProfile)
+    $addToml = {
+        param([string]$File, [string]$Scope, [bool]$Outside)
+        $a = New-AwTomlArtifact -State $state -Path $File -Scope $Scope -Harness 'codex' -AllowOutsideRoot:$Outside
+        if ($a) { [void]$codex.Add($a) }
+    }
+    foreach ($h in $codexHomes) { & $addToml ([System.IO.Path]::Combine($h, 'config.toml')) 'user' $true }
+    & $addToml (& $inRoot '.codex\config.toml') 'project' $false
+    foreach ($h in $codexHomes) {
+        foreach ($f in (Get-AwMatchingFiles $state $h '*.config.toml')) {
+            $leaf = $f.Substring($f.LastIndexOfAny([char[]]@('\', '/')) + 1)
+            if ($leaf -match $script:AwCodexProfileNamePattern) { & $addToml $f 'profile' $true }
+        }
+    }
+    if ($userProfile -and ($isRealProfile -or $null -ne $script:AwCodexRequirementsOverride)) {
+        foreach ($m in (Get-AwCodexRequirementsCandidates)) { & $addToml $m 'managed' $true }
+    }
+    foreach ($a in $codex) {
+        if ($a.Scope -eq 'managed') { continue }
+        $m = New-AwCodexMcpArtifact -State $state -Artifact $a
+        if ($m) { [void]$mcpFiles.Add($m); $seen.Mcp = $true }
+    }
+    $a = New-AwJsonArtifact -State $state -Path (& $inRoot '.codex\hooks.json') -Scope 'project' -Harness 'codex'
+    if ($a) { [void]$hooks.Add($a) }
+    foreach ($f in (Get-AwMatchingFiles $state (& $inRoot '.codex\rules') '*.rules')) {
+        $raw = Read-AwSafeText -State $state -Path $f -Harness 'codex'
+        if ($null -ne $raw) {
+            [void]$codexRules.Add([pscustomobject]@{ Path = (New-Object System.IO.FileInfo -ArgumentList $f).FullName; Scope = 'project'; Harness = 'codex'; Raw = $raw; Data = $null })
+        }
+    }
+
     # --- Harness detection --------------------------------------------------------------
     $dirExists = { param([string]$P) [System.IO.Directory]::Exists($P) }
     $harnesses = New-Object System.Collections.Generic.List[string]
@@ -395,6 +530,9 @@ function New-AwContext {
     if ($isClaude) { $harnesses.Add('claude-code') }
     $isCli = (& $dirExists (Join-Path $github 'copilot')) -or ($userProfile -and (& $dirExists (& $inProfile '.copilot')))
     if ($isCli) { $harnesses.Add('copilot-cli') }
+    $isCodex = (& $dirExists (& $inRoot '.codex')) -or ($codex.Count -gt 0)
+    foreach ($h in $codexHomes) { if (& $dirExists $h) { $isCodex = $true } }
+    if ($isCodex) { $harnesses.Add('codex') }
     if ($seen.Mcp) { $harnesses.Add('mcp') }
 
     # --- Text files for secret scanning -------------------------------------------------
@@ -406,7 +544,8 @@ function New-AwContext {
         $textFiles.Add($P)
     }
     foreach ($art in @(@($userSettings, $workspaceSettings) + $workspaceFiles.ToArray() + $mcpFiles.ToArray() +
-                       $agentFiles.ToArray() + $hooks.ToArray() + $claudeSettings.ToArray() + $copilotCli.ToArray())) {
+                       $agentFiles.ToArray() + $hooks.ToArray() + $claudeSettings.ToArray() + $copilotCli.ToArray() +
+                       $codex.ToArray() + $codexRules.ToArray())) {
         if ($art) { & $addText $art.Path }
     }
     foreach ($envFile in (Get-AwMatchingFiles $state $root '.env*')) {
@@ -446,6 +585,8 @@ function New-AwContext {
         Hooks          = $hooks.ToArray()
         ClaudeSettings = $claudeSettings.ToArray()
         CopilotCli     = $copilotCli.ToArray()
+        Codex          = $codex.ToArray()
+        CodexRules     = $codexRules.ToArray()
         TextFiles      = [string[]]$textArray
         Errors         = $state.Errors.ToArray()
     }
@@ -463,7 +604,8 @@ function Get-AwFileText {
     param([Parameter(Mandatory)] $Ctx, [Parameter(Mandatory)] [string]$Path)
     $vs = $Ctx.VSCode
     foreach ($a in @(@($vs.UserSettings, $vs.WorkspaceSettings) + @($vs.WorkspaceFiles) + @($Ctx.McpFiles) + @($Ctx.AgentFiles) +
-                     @($Ctx.Hooks) + @($Ctx.ClaudeSettings) + @($Ctx.CopilotCli))) {
+                     @($Ctx.Hooks) + @($Ctx.ClaudeSettings) + @($Ctx.CopilotCli) +
+                     @(Get-AwMemberValue $Ctx 'Codex') + @(Get-AwMemberValue $Ctx 'CodexRules'))) {
         if ($a -and [string]::Equals($a.Path, $Path, $script:AwPathComparison)) { return $a.Raw }
     }
     try {

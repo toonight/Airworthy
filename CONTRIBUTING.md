@@ -178,11 +178,12 @@ Rule IDs follow `AW-<AREA>-<NNN>`:
 | `MCP` | `src/Rules/Mcp.ps1` | `mcp` |
 | `CC` | `src/Rules/ClaudeCode.ps1` | `claude-code` |
 | `CLI` | `src/Rules/CopilotCli.ps1` | `copilot-cli` |
+| `CDX` | `src/Rules/Codex.ps1` | `codex` |
 | `CORE` | reserved for the engine | |
 
 Take the next free number in the area. Never reuse or renumber an ID: users suppress, track and
 search findings by ID. `Register-AwRule` refuses an ID that does not match
-`^AW-(CORE|VSC|AGT|SEC|MCP|CC|CLI)-[0-9]{3}$`, a duplicate, and the reserved `AW-CORE-*` IDs.
+`^AW-(CORE|VSC|AGT|SEC|MCP|CC|CLI|CDX)-[0-9]{3}$`, a duplicate, and the reserved `AW-CORE-*` IDs.
 
 ### 2. Register it
 
@@ -215,7 +216,9 @@ Register-AwRule -Id 'AW-CLI-006' -Title 'Short statement of the risky configurat
   `medium` rule says in its description what remains to be verified. Confidence becomes the SARIF
   `precision` of the rule.
 - **Check** receives the analysis context (see the architecture document) and returns findings
-  created with `New-AwFinding`. Use `Get-AwSetting` for effective VS Code values. The engine fills
+  created with `New-AwFinding`. Use `Get-AwSetting` for effective VS Code values; Codex CLI rules
+  read the parsed TOML files of `$Ctx.Codex` (scopes `user`, `project`, `profile` and `managed`),
+  whose MCP servers are also in `$Ctx.McpFiles`. The engine fills
   any field you omit from the rule metadata. A finding may override the severity when the context
   makes it worse or milder; say so in the description.
 - **Evidence** is short, shows the offending key and value, and never contains a full secret
@@ -238,7 +241,10 @@ configuration), in the matching `tests/<Area>.Tests.ps1` file.
   `& (Get-Module Airworthy) { param($p) New-AwContext -Path $p -NoUserProfile } $fixture`.
 - Some test files check rule coverage. In `tests/VSCode.Tests.ps1`, use `Assert-VscFires` and
   `Assert-VscSilent` and add the new ID to the coverage list; in `tests/ClaudeCode.Tests.ps1`,
-  extend the ID range of the coverage test.
+  extend the ID range of the coverage test. In `tests/Codex.Tests.ps1`, `New-CdxCase` builds a
+  temporary project, user profile and `requirements.toml` from TOML text and `Invoke-CdxCheck`
+  runs one rule on it; the engine tests of the `tests/fixtures/codex/` and shared fixtures list
+  every `AW-CDX` finding they expect.
 - If the rule fires on the shared `insecure`, `mixed` or `hardened` fixtures, check that the
   integration tests still hold (`insecure` grades F, `mixed` sits in between, `hardened` grades A
   or B) and regenerate the examples (below).
@@ -253,7 +259,7 @@ configuration), in the matching `tests/<Area>.Tests.ps1` file.
   ```
 
 - Add the rule to its category table in the README, and update the rule counts and badge.
-- Add a line to the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md).
+- Add a line to [CHANGELOG.md](CHANGELOG.md) under an `Unreleased` section at the top (create it if it doesn't exist yet).
 
 ## Running the tests
 

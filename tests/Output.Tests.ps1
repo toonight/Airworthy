@@ -83,7 +83,7 @@ function New-TestResult {
     $score = & $aw { param($f, $r, $x) Get-AwScore -Findings $f -Rules $r -Harnesses $x } $all $rules $Harnesses
     $min = Get-TestRank $MinSeverity
     [pscustomobject]@{
-        Tool      = [ordered]@{ Name = 'Airworthy'; Version = '0.1.0' }
+        Tool      = [ordered]@{ Name = 'Airworthy'; Version = '0.2.0' }
         ScannedAt = '2026-10-18T12:00:00Z'
         Root      = $Root
         Harnesses = [string[]]$Harnesses
@@ -200,6 +200,27 @@ Describe 'ConvertTo-AwJson' {
         Assert-Equal $j1 (Get-JsonText (New-TestResult -Findings @((New-TestFinding -Data $d1))))
         Assert-Match $j1 '"Data": \{\s*"Mid": \{\s*"a": 2,\s*"b": 1\s*\},\s*"alpha": 2,\s*"zeta": 1\s*\}'
     }
+    It 'keeps each value with its key when it sorts a hashtable whose values all have one type' {
+        # Regression: names and values used to be sorted as two parallel arrays, and PowerShell
+        # sorted a converted copy of the values when they were all strings (or all numbers).
+        $strings = @{}; $strings['zeta'] = 'value-of-zeta'; $strings['alpha'] = 'value-of-alpha'; $strings['Mid'] = 'value-of-Mid'; $strings['beta'] = 'value-of-beta'
+        $text = & $aw { param($t) ConvertTo-AwJsonText -InputObject $t -Compress } $strings
+        Assert-Equal '{"Mid":"value-of-Mid","alpha":"value-of-alpha","beta":"value-of-beta","zeta":"value-of-zeta"}' $text
+        $back = & $aw { param($t) ConvertFrom-AwJsonc -Text $t } $text
+        Assert-Equal 4 $back.Count
+        foreach ($k in $strings.Keys) { Assert-Equal $strings[$k] $back[$k] $k }
+        $numbers = @{ c = 3; a = 1; b = 2 }
+        Assert-Equal '{"a":1,"b":2,"c":3}' (& $aw { param($t) ConvertTo-AwJsonText -InputObject $t -Compress } $numbers)
+        $flags = @{ off = $false; on = $true }
+        Assert-Equal '{"off":false,"on":true}' (& $aw { param($t) ConvertTo-AwJsonText -InputObject $t -Compress } $flags)
+    }
+    It 'keeps the order of ordered dictionaries and mixed-type hashtables' {
+        $ordered = [ordered]@{ zeta = 'z'; alpha = 'a' }
+        Assert-Equal '{"zeta":"z","alpha":"a"}' (& $aw { param($t) ConvertTo-AwJsonText -InputObject $t -Compress } $ordered)
+        $mixed = @{ zeta = 'z'; alpha = 1; mid = $null; beta = @('x') }
+        Assert-Equal '{"alpha":1,"beta":["x"],"mid":null,"zeta":"z"}' (& $aw { param($t) ConvertTo-AwJsonText -InputObject $t -Compress } $mixed)
+        Assert-Equal '{}' (& $aw { ConvertTo-AwJsonText -InputObject @{} -Compress })
+    }
     It 'keeps one-element and empty arrays as arrays' {
         $json = Get-JsonText (New-TestResult -Findings @((New-TestFinding -References @('OWASP-ASI02'))) -Harnesses @())
         Assert-Match $json '"References": \[\s*"OWASP-ASI02"\s*\]'
@@ -293,7 +314,7 @@ Describe 'ConvertTo-AwSarif' {
     It 'describes the tool driver' {
         $driver = $run.tool.driver
         Assert-Equal 'Airworthy' $driver.name
-        Assert-Equal '0.1.0' $driver.version
+        Assert-Equal '0.2.0' $driver.version
         Assert-Equal 'https://github.com/toonight/Airworthy' $driver.informationUri
         Assert-True $run.invocations[0].executionSuccessful
         # Read the raw text: ConvertFrom-Json in PowerShell 7 turns ISO 8601 strings into DateTime.
@@ -509,7 +530,7 @@ Describe 'ConvertTo-AwConsole' {
 
     It 'prints the score, grade and severity counts' {
         $s = $mainResult.Score
-        Assert-Match $lines[0] '^Airworthy 0\.1\.0'
+        Assert-Match $lines[0] '^Airworthy 0\.2\.0'
         Assert-Contains $lines "  Score      $($s.Score)/100  grade $($s.Grade)"
         Assert-Contains $lines '  Findings   1 critical, 1 high, 1 medium, 1 low, 1 info'
         Assert-Contains $lines '  Root       C:\FakeAwRoot\repo'

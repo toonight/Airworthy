@@ -1,0 +1,61 @@
+# Synthetic Codex CLI user configuration, HARDENED (Airworthy test fixture).
+model = "gpt-fake-codex"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+
+[sandbox_workspace_write]
+network_access = false
+writable_roots = ["/tmp/build-cache"]
+
+[shell_environment_policy]
+inherit = "core"
+ignore_default_excludes = false
+
+[shell_environment_policy.filters]
+"*_TOKEN" = "exclude"
+
+# The network proxy enforces the domain rules of the permission profiles.
+[features]
+network_proxy = true
+
+[permissions.project-edit]
+extends = ":workspace"
+
+[permissions.project-edit.workspace_roots]
+"~/code/app" = true
+
+[permissions.project-edit.filesystem]
+":minimal" = "read"
+
+[permissions.project-edit.network]
+enabled = true
+mode = "limited"
+
+[permissions.project-edit.network.domains]
+"api.example.invalid" = "allow"
+
+[projects.'D:\work\project']
+trust_level = "trusted"
+
+[projects."/home/dev"]
+trust_level = "untrusted"
+
+[model_providers.fake]
+name = "Fake provider"
+base_url = "https://llm.example.invalid/v1"
+env_key = "FAKE_PROVIDER_API_KEY"
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github@1.4.2"]
+env_vars = ["GITHUB_PERSONAL_ACCESS_TOKEN"]
+default_tools_approval_mode = "writes"
+
+[mcp_servers.docs]
+url = "https://mcp.example.invalid/mcp"
+bearer_token_env_var = "DOCS_MCP_TOKEN"
+env_http_headers = { "X-Tenant" = "DOCS_TENANT" }
+
+[mcp_servers.docs.tools.search]
+approval_mode = "prompt"

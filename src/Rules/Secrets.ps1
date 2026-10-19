@@ -49,6 +49,12 @@ $script:AwSecRepeatRegex = New-AwAgtRegex -CaseSensitive -Pattern '(.)\1{5}'
 $script:AwSecKeyBeforeRegex = New-AwAgtRegex -CaseSensitive -Pattern '(?<k>[A-Za-z_][A-Za-z0-9_.-]{0,63})["'']?[ \t]*[:=][ \t]*["'']?$'
 $script:AwSecEnvTemplateRegex = New-AwAgtRegex -Pattern '\.(?:example|sample|template|dist|defaults|schema)$'
 $script:AwSecEnvAssignRegex = New-AwAgtRegex -Multiline -Pattern '^[ \t]*(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*[ \t]*='
+# Codex MCP server keys whose values are environment variable NAMES, not secrets (learn.chatgpt.com
+# docs/extend/mcp and docs/config-file/config-reference): env_http_headers maps header names to
+# variable names, bearer_token_env_var names the variable that holds the bearer token, and env_vars
+# lists variables to forward (strings, or tables with a name).
+$script:AwSecEnvNameRegex = New-AwAgtRegex -CaseSensitive -Pattern '^[A-Za-z_][A-Za-z0-9_]{0,199}$'
+$script:AwSecMaxWalk = 100000   # values examined per parsed Codex file
 
 function Get-AwSecFiles {
     # @{ Path; Text; Harness } for every text file of the context. Cached per context.
@@ -147,12 +153,96 @@ function Find-AwSecMatches {
     return ,$out.ToArray()
 }
 
+function Get-AwSecCodexServers {
+    # Server tables of a parsed Codex config file: mcp_servers.<id> and plugins.<plugin>.mcp_servers.<id>.
+    param($Data)
+    if ($Data -isnot [System.Collections.IDictionary]) { return }
+    $containers = New-Object System.Collections.ArrayList
+    if ($Data['mcp_servers'] -is [System.Collections.IDictionary]) { [void]$containers.Add($Data['mcp_servers']) }
+    if ($Data['plugins'] -is [System.Collections.IDictionary]) {
+        foreach ($plugin in $Data['plugins'].Values) {
+            if ($plugin -is [System.Collections.IDictionary] -and $plugin['mcp_servers'] -is [System.Collections.IDictionary]) { [void]$containers.Add($plugin['mcp_servers']) }
+        }
+    }
+    foreach ($c in $containers) {
+        foreach ($s in $c.Values) { if ($s -is [System.Collections.IDictionary]) { $s } }
+    }
+}
+
+function Get-AwSecEnvNames {
+    <#
+    Values of a parsed Codex config file that only name environment variables: the strings held by
+    the env_http_headers, bearer_token_env_var and env_vars keys of its MCP servers, when they are
+    valid variable names and the same string appears nowhere else in the file's values (so a
+    literal secret copied into one of these keys still counts as a secret elsewhere). An ordinal
+    HashSet, possibly empty.
+    #>
+    param($Data)
+    $set = New-Object 'System.Collections.Generic.HashSet[string]' -ArgumentList ([StringComparer]::Ordinal)
+    $named = New-Object 'System.Collections.Generic.Dictionary[string,int]' -ArgumentList ([StringComparer]::Ordinal)
+    $candidates = New-Object System.Collections.Generic.List[object]
+    foreach ($s in @(Get-AwSecCodexServers $Data)) {
+        $headers = $s['env_http_headers']
+        if ($headers -is [System.Collections.IDictionary]) { foreach ($v in $headers.Values) { $candidates.Add($v) } }
+        $candidates.Add($s['bearer_token_env_var'])
+        $vars = $s['env_vars']
+        if ($vars -is [System.Array]) {
+            foreach ($v in $vars) {
+                if ($v -is [System.Collections.IDictionary]) { $candidates.Add($v['name']) } else { $candidates.Add($v) }
+            }
+        }
+    }
+    foreach ($v in $candidates) {
+        if ($v -isnot [string] -or -not $script:AwSecEnvNameRegex.IsMatch($v)) { continue }
+        $n = 0
+        [void]$named.TryGetValue($v, [ref]$n)
+        $named[$v] = $n + 1
+    }
+    if ($named.Count -eq 0) { return ,$set }
+    # Every occurrence of those strings among the values of the file, at any depth.
+    $seen = New-Object 'System.Collections.Generic.Dictionary[string,int]' -ArgumentList ([StringComparer]::Ordinal)
+    $stack = New-Object System.Collections.Stack
+    $stack.Push($Data)
+    $walked = 0
+    while ($stack.Count -gt 0) {
+        $walked++
+        if ($walked -gt $script:AwSecMaxWalk) { $set.Clear(); return ,$set }
+        $node = $stack.Pop()
+        if ($node -is [string]) {
+            if ($named.ContainsKey($node)) { $n = 0; [void]$seen.TryGetValue($node, [ref]$n); $seen[$node] = $n + 1 }
+        } elseif ($node -is [System.Collections.IDictionary]) {
+            foreach ($v in $node.Values) { $stack.Push($v) }
+        } elseif ($node -is [System.Array]) {
+            foreach ($v in $node) { $stack.Push($v) }
+        }
+    }
+    foreach ($k in $named.Keys) {
+        $n = 0
+        if ($seen.TryGetValue($k, [ref]$n) -and $n -eq $named[$k]) { [void]$set.Add($k) }
+    }
+    return ,$set
+}
+
+function Get-AwSecEnvNameFiles {
+    # Path (case-insensitive) -> Get-AwSecEnvNames set, for the parsed Codex config files of the context.
+    param($Ctx)
+    $out = New-Object 'System.Collections.Generic.Dictionary[string,object]' -ArgumentList ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($a in @(Get-AwMemberValue $Ctx 'Codex')) {
+        if ($null -eq $a -or $a.Data -isnot [System.Collections.IDictionary] -or [string]::IsNullOrEmpty([string]$a.Path)) { continue }
+        $names = Get-AwSecEnvNames $a.Data
+        if ($names.Count -gt 0) { $out[[string]$a.Path] = $names }
+    }
+    return ,$out
+}
+
 function Get-AwSecFindings {
     # Findings of one secret rule over every text file, capped per file and per rule.
     param($Ctx, [string]$RuleId)
     $pattern = $script:AwSecPatterns | Where-Object { $_.RuleId -eq $RuleId } | Select-Object -First 1
     $generic = $null -eq $pattern
     $name = if ($generic) { 'Hard-coded value' } else { $pattern.Name }
+    $envNames = $null
+    if ($generic) { $envNames = Get-AwSecEnvNameFiles $Ctx }
     $total = 0
     foreach ($file in (Get-AwSecFiles $Ctx)) {
         try {
@@ -163,6 +253,11 @@ function Get-AwSecFindings {
             if ($inner -isnot [System.Text.RegularExpressions.RegexMatchTimeoutException]) { throw }
             New-AwFinding -RuleId $RuleId -Severity 'info' -Harness $file.Harness -Evidence 'Scan of this file stopped: pattern matching took too long.' -Location @{ Path = $file.Path }
             continue
+        }
+        if ($null -ne $envNames -and $hits.Count -gt 0 -and $envNames.ContainsKey([string]$file.Path)) {
+            # Codex MCP keys that name environment variables (env_http_headers values...) are not secrets.
+            $skip = $envNames[[string]$file.Path]
+            $hits = @($hits | Where-Object { -not $skip.Contains([string]$_.Value) })
         }
         if ($hits.Count -eq 0) { continue }
         $counter = New-AwAgtLineCounter $file.Text
@@ -238,7 +333,9 @@ Register-AwSecRule -Id 'AW-SEC-008' -Title 'JSON Web Token in a configuration fi
 Register-AwSecRule -Id 'AW-SEC-009' -Title 'Hard-coded password, secret or token value' -Severity 'medium' -What 'secret' -Confidence 'medium' `
     -Description ("A key whose name contains password, passwd, secret, token or api key is assigned a literal value. Placeholders, references " +
         "(`${input:...}, `$VAR, %VAR%), paths, URLs, numbers, booleans and low-entropy values (under 3 bits per character or fewer than 6 distinct " +
-        "characters) are ignored; the remaining matches may still include false positives.") `
+        "characters) are ignored, and so are the values of the env_http_headers, bearer_token_env_var and env_vars keys of Codex MCP servers, which " +
+        "name environment variables (unless the value is not a valid variable name or also appears elsewhere in the file). The remaining matches may " +
+        "still include false positives.") `
     -References @('OWASP-ASI03', $script:AwSecDocMcpServers) `
     -Check { param($Ctx) Get-AwSecFindings -Ctx $Ctx -RuleId 'AW-SEC-009' }
 

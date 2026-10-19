@@ -1,0 +1,16 @@
+# Synthetic Codex CLI project configuration, MIXED (Airworthy test fixture): the sandbox and the
+# approval prompts stay on, but sandboxed commands have network access and one MCP tool runs
+# without a prompt.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+
+[mcp_servers.docs]
+command = "npx"
+args = ["--yes", "@example/mcp-server-docs@1.4.2"]
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.docs.tools.search]
+approval_mode = "approve"

@@ -1,0 +1,34 @@
+# Keys from the TOML 1.0 specification (https://toml.io/en/v1.0.0#keys), with synthetic values.
+key = "value"
+bare_key = "value"
+bare-key = "value"
+1234 = "value"
+"127.0.0.1" = "value"
+"character encoding" = "value"
+"\u028E\u01DD\u029E" = "value"
+'key2' = "value"
+'quoted "value"' = "value"
+"" = "blank"
+
+name = "Orange"
+physical.color = "orange"
+physical.shape = "round"
+site."example.com" = true
+
+fruit.name = "banana"     # this is best practice
+fruit. color = "yellow"    # same as fruit.color
+fruit . flavor = "banana"   # same as fruit.flavor
+
+3.14159 = "pi"
+
+# Out of order: valid but discouraged.
+apple.type = "fruit"
+orange.type = "fruit"
+apple.skin = "thin"
+orange.skin = "thick"
+apple.color = "red"
+orange.color = "orange"
+
+# Keys are case-sensitive.
+Case = "upper"
+case = "lower"

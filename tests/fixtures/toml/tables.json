@@ -1,0 +1,36 @@
+{
+  "root_key": "before the first header",
+  "table-1": { "key1": "some string", "key2": 123 },
+  "table-2": { "key1": "another string", "key2": 456 },
+  "dog": { "tater.man": { "type": { "name": "pug" } } },
+  "a": { "b": { "c": {} } },
+  "d": { "e": { "f": {} } },
+  "g": { "h": { "i": {} } },
+  "j": { "\u029e": { "l": {} } },
+  "x": { "y": { "z": { "w": {} } } },
+  "fruit": { "apple": { "color": "red", "taste": { "sweet": true }, "texture": { "smooth": true } } },
+  "animal": {
+    "inline": { "type": { "name": "pug" } },
+    "name": { "first": "Ada", "last": "Example" },
+    "point": { "x": 1, "y": 2 },
+    "empty": {},
+    "nested": { "inner": { "deep": [1, { "k": "v" }] } },
+    "spanning": { "list": [1, 2] }
+  },
+  "products": [
+    { "name": "Hammer", "sku": 738594937 },
+    {},
+    { "name": "Nail", "sku": 284758393, "color": "gray" }
+  ],
+  "fruits": [
+    {
+      "name": "apple",
+      "physical": { "color": "red", "shape": "round" },
+      "varieties": [{ "name": "red delicious" }, { "name": "granny smith" }]
+    },
+    { "name": "banana", "varieties": [{ "name": "plantain" }] }
+  ],
+  "inline_arrays": {
+    "points": [{ "x": 1, "y": 2, "z": 3 }, { "x": 7, "y": 8, "z": 9 }, { "x": 2, "y": 4, "z": 8 }]
+  }
+}

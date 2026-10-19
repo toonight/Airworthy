@@ -1,0 +1,2 @@
+# Not a Codex file: only config.toml and <name>.config.toml are read.
+sandbox_mode = "danger-full-access"

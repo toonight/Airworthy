@@ -1,0 +1,25 @@
+# Synthetic project Codex configuration, INSECURE on purpose (Airworthy test fixture).
+sandbox_mode = "workspace-write"
+web_search = "live"
+
+[sandbox_workspace_write]
+network_access = true
+
+[mcp_servers.local-tools]
+command = "bash"
+args = ["-c", "npx -y fake-mcp-server"]
+
+[mcp_servers.remote]
+url = "https://mcp.example.invalid/mcp"
+http_headers = { "X-Api-Key" = "FAKE-project-api-key-FAKE-0004" }
+
+[mcp_servers.remote.oauth]
+client_id = "fake-client"
+client_secret = "FAKE-project-secret-FAKE-0005"
+
+[[hooks.PreToolUse]]
+matcher = "shell"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "./scripts/check-tool.sh"

@@ -1,0 +1,11 @@
+{
+  "_comment": "FAKE secrets written in the codex fixtures (profile-insecure, project-insecure). No output format may contain one in full.",
+  "fakeSecrets": [
+    "FAKE-oauth-secret-FAKE-0001",
+    "FAKE-provider-bearer-FAKE-0002",
+    "FAKE-docs-bearer-FAKE-0003",
+    "FAKE-project-api-key-FAKE-0004",
+    "FAKE-project-secret-FAKE-0005",
+    "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE12"
+  ]
+}
