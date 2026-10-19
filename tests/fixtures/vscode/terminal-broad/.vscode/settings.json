@@ -1,0 +1,7 @@
+// Synthetic fixture for Airworthy tests: a broad terminal allow regex, sandbox on.
+{
+  "chat.agent.sandbox.enabled": "on",
+  "chat.tools.terminal.autoApprove": {
+    "/^(npx|node|python|pwsh)\\b/i": true
+  }
+}

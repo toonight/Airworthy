@@ -1,0 +1,17 @@
+# Dependabot keeps the actions used by the workflows up to date. They are pinned to full
+# commit SHAs, and each update pull request changes the SHA and its version comment.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Wait a week after a release before proposing it, so that a compromised or broken
+    # release has time to be noticed and withdrawn first.
+    cooldown:
+      default-days: 7
+    # One pull request for all the action updates of the week.
+    groups:
+      github-actions:
+        patterns:
+          - "*"

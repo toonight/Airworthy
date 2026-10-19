@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "hooks": {
+    "\u003cb\u003eAW-XSS-MARKER-HOOKEVENT\u003c/b\u003e": [ { "type": "command", "command": "echo hook" } ]
+  }
+}

@@ -1,0 +1,1 @@
+{ "servers": { "insiders-tool": { "command": "node", "args": ["tool.js"] } } }

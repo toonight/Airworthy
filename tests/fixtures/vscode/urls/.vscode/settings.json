@@ -1,0 +1,11 @@
+// Synthetic fixture for Airworthy tests: URL auto-approval patterns of every scope.
+{
+  "chat.tools.urls.autoApprove": {
+    "https://*": true,
+    "https://*.example.com/*": { "approveRequest": true, "approveResponse": false },
+    "https://docs.example.com/*": true,
+    "https://exact.example.com/page": true,
+    "*.io": { "approveRequest": false, "approveResponse": true },
+    "https://*.blocked.example.com": false
+  }
+}

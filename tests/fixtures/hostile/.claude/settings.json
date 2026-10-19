@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": ["Bash(* \u003cb\u003eAW-XSS-MARKER-ALLOW\u003c/b\u003e)", "WebFetch"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "\u003ci\u003eAW-XSS-MARKER-MATCHER",
+        "hooks": [
+          { "type": "command", "command": "echo \u003c/script\u003eAW-XSS-MARKER-HOOK\u2028done" },
+          { "type": "command", "command": "New-Item -ItemType File -Path AW-EXEC-MARKER-HOOK.txt" }
+        ]
+      }
+    ]
+  }
+}

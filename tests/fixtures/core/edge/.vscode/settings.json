@@ -1,0 +1,4 @@
+{
+  "chat.tools.global.autoApprove": false,
+  "chat.agent.maxRequests" 30
+}

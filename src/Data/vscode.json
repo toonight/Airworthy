@@ -1,0 +1,36 @@
+{
+  "_comment": "Rule data for src/Rules/VSCode.Settings.ps1 (AW-VSC-*), loaded with Read-AwDataFile. Command names and flags are separate tokens. At run time each form becomes one probe command line: its tokens plus the neutral placeholder argument. There is no full command line, URL or payload in this file (CONTRIBUTING.md, Antivirus hygiene).",
+  "terminal": {
+    "_comment": "catchAllProbes: an allow rule that matches both lines approves any command. riskyCommands: commands that download, execute or publish code. approvalRequired: labels of the Windows download and exfiltration commands that should have a false (approval-required) entry. approvalRequiredFixKeys: the entries suggested in the AW-VSC-006 fix.",
+    "placeholderArgument": "awprobe",
+    "catchAllProbes": ["awprobe-unknown-7q --flag value", "zz_awprobe_tool /c run"],
+    "riskyCommands": [
+      { "label": "powershell (encoded command)", "forms": [["powershell", "-EncodedCommand"], ["powershell.exe", "-enc"]] },
+      { "label": "pwsh (encoded command)",       "forms": [["pwsh", "-enc"]] },
+      { "label": "iwr",                          "forms": [["iwr"]] },
+      { "label": "Invoke-WebRequest",            "forms": [["Invoke-WebRequest", "-Uri"]] },
+      { "label": "irm",                          "forms": [["irm"]] },
+      { "label": "Invoke-RestMethod",            "forms": [["Invoke-RestMethod"]] },
+      { "label": "Start-BitsTransfer",           "forms": [["Start-BitsTransfer", "-Source"]] },
+      { "label": "curl.exe",                     "forms": [["curl.exe"]] },
+      { "label": "curl",                         "forms": [["curl"]] },
+      { "label": "wget",                         "forms": [["wget"]] },
+      { "label": "certutil",                     "forms": [["certutil"]] },
+      { "label": "bitsadmin",                    "forms": [["bitsadmin"]] },
+      { "label": "python -c",                    "forms": [["python", "-c"], ["python3", "-c"]] },
+      { "label": "node -e",                      "forms": [["node", "-e"]] },
+      { "label": "npx",                          "forms": [["npx"]] },
+      { "label": "git push",                     "forms": [["git", "push"]] },
+      { "label": "rm -rf",                       "forms": [["rm", "-rf"]] },
+      { "label": "Remove-Item",                  "forms": [["Remove-Item", "-Recurse", "-Force"]] }
+    ],
+    "approvalRequired": [
+      "iwr", "Invoke-WebRequest", "irm", "Invoke-RestMethod", "Start-BitsTransfer", "curl.exe", "certutil", "bitsadmin",
+      "powershell (encoded command)", "pwsh (encoded command)"
+    ],
+    "approvalRequiredFixKeys": [
+      "iwr", "Invoke-WebRequest", "irm", "Invoke-RestMethod", "Start-BitsTransfer", "curl.exe", "certutil", "bitsadmin",
+      "/^(powershell|pwsh)(\\.exe)?\\b/i"
+    ]
+  }
+}

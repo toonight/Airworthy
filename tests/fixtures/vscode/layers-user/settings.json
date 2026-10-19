@@ -1,0 +1,9 @@
+// Synthetic FAKE VS Code user settings, passed with -UserSettingsPath.
+{
+  "chat.tools.global.autoApprove": true,
+  "chat.tools.terminal.autoApprove": {
+    "npx": true,
+    "git push": false
+  },
+  "chat.agent.maxRequests": 300
+}

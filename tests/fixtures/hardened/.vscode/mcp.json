@@ -1,0 +1,21 @@
+// Synthetic HARDENED fixture: pinned version, secret prompted at start-up, no secret in the file.
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "docs-token",
+      "description": "Token for the docs MCP server",
+      "password": true
+    }
+  ],
+  "servers": {
+    "docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "@example/mcp-server-docs@1.4.2"],
+      "env": {
+        "DOCS_TOKEN": "${input:docs-token}"
+      }
+    }
+  }
+}

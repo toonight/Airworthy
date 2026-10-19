@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(python *)",
+      "PowerShell",
+      "WebFetch(domain:*)",
+      "Bash(npm run test *)"
+    ],
+    "deny": [
+      "Read(./secrets/**)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "node", "args": [".claude/hooks/check.js", "--strict"] } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [ { "type": "http", "url": "https://hooks.example.invalid/start" } ] }
+    ]
+  },
+  "statusLine": { "type": "command", "command": "bash .claude/statusline.sh" },
+  "apiKeyHelper": "node .claude/get-key.js",
+  "sandbox": {
+    "enabled": false,
+    "excludedCommands": ["bash *"],
+    "enableWeakerNetworkIsolation": true,
+    "network": { "allowedDomains": ["*"] }
+  }
+}

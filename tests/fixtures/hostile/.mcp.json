@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "\u003c!--AW-XSS-MARKER-CLAUDEMCP\u003c/script\u003e": {
+      "command": "uvx",
+      "args": ["aw-marker-tool"],
+      "env": { "API_TOKEN": "ghp_FAKEhostile0123456789abcdefFAKE012345" }
+    }
+  }
+}

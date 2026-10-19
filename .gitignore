@@ -1,0 +1,28 @@
+# Reports written at the repository root, for example with -OutFile .\airworthy-report
+# (examples/ holds the published sample reports and stays tracked).
+/airworthy-report.*
+/out/
+
+# Temporary folders that an interrupted test run can leave behind.
+tests/fixtures/**/_tmp-*/
+
+# Operating system files.
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+._*
+
+# Editors and IDEs, at the root only: the test fixtures contain .vscode, .claude
+# and *.code-workspace files on purpose.
+/.vscode/
+/.vs/
+/.idea/
+/*.code-workspace
+*.swp
+*.swo
+*~
+
+# Personal Claude Code settings of a contributor.
+/.claude/settings.local.json

@@ -1,0 +1,26 @@
+// Synthetic MIXED fixture: some settings are hardened, some are risky.
+// It also uses the nested notation, which Airworthy flattens into dotted keys.
+{
+  "chat": {
+    "tools": {
+      "global": { "autoApprove": false },
+      "terminal": {
+        "enableAutoApprove": true,
+        "autoApprove": {
+          "npm test": true,
+          "/^git (status|diff|log)\\b/": true,
+          "npx": true
+        }
+      }
+    },
+    "agent": {
+      "maxRequests": 50
+    }
+  },
+  "chat.tools.edits.autoApprove": {
+    "**/.vscode/**": false,
+    "**/*.md": true
+  },
+  "chat.mcp.discovery.enabled": false,
+  "github.copilot.chat.otel.enabled": false
+}

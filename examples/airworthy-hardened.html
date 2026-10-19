@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'sha256-iIN1xqkOB3gjmPrfwN1auiHl7go8GdE7COuFdF/tKcc='; script-src 'sha256-dzBsNBg8kTthVcCBg1hzZNc/p4bn8G3jnrbvt+Dz3EA='; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Airworthy report</title>
+<style>
+/* Airworthy report styles. Color tokens: light by default, dark from the system or the theme toggle. */
+:root {
+  color-scheme: light;
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --surface-2: #f5f7fa;
+  --ink: #17202d;
+  --ink-2: #4b5667;
+  --line: #d6dce4;
+  --line-strong: #aab5c3;
+  --focus: #1d5fd0;
+  --link: #1b57b8;
+  --tag: #f3c33b;
+  --tag-ink: #2b2200;
+  --tag-line: rgba(43, 34, 0, 0.3);
+  --track: #e2e7ee;
+  --sev-critical: #b42318;
+  --sev-high: #c4320a;
+  --sev-medium: #9a6700;
+  --sev-low: #1f6fb5;
+  --sev-info: #5d6878;
+  --grade-a: #1f7a48;
+  --grade-b: #4d7c0f;
+  --grade-c: #9a6700;
+  --grade-d: #c4320a;
+  --grade-f: #b42318;
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #12161d;
+    --surface: #1a2029;
+    --surface-2: #212833;
+    --ink: #e6eaf0;
+    --ink-2: #a2acba;
+    --line: #2d3643;
+    --line-strong: #4a5666;
+    --focus: #7fb0ff;
+    --link: #8cb8ff;
+    --tag: #d1a52c;
+    --tag-ink: #1c1600;
+    --tag-line: rgba(28, 22, 0, 0.38);
+    --track: #2a323d;
+    --sev-critical: #ff8a80;
+    --sev-high: #ffa060;
+    --sev-medium: #e5b53d;
+    --sev-low: #7dbbff;
+    --sev-info: #a2acba;
+    --grade-a: #5cc98a;
+    --grade-b: #a3cf5a;
+    --grade-c: #e5b53d;
+    --grade-d: #ffa060;
+    --grade-f: #ff8a80;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12161d;
+  --surface: #1a2029;
+  --surface-2: #212833;
+  --ink: #e6eaf0;
+  --ink-2: #a2acba;
+  --line: #2d3643;
+  --line-strong: #4a5666;
+  --focus: #7fb0ff;
+  --link: #8cb8ff;
+  --tag: #d1a52c;
+  --tag-ink: #1c1600;
+  --tag-line: rgba(28, 22, 0, 0.38);
+  --track: #2a323d;
+  --sev-critical: #ff8a80;
+  --sev-high: #ffa060;
+  --sev-medium: #e5b53d;
+  --sev-low: #7dbbff;
+  --sev-info: #a2acba;
+  --grade-a: #5cc98a;
+  --grade-b: #a3cf5a;
+  --grade-c: #e5b53d;
+  --grade-d: #ffa060;
+  --grade-f: #ff8a80;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scrollbar-gutter: stable; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.55 var(--font); overflow-wrap: break-word; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+code, pre { font-family: var(--mono); }
+a { color: var(--link); text-underline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -60px; z-index: 10; padding: 8px 14px; background: var(--surface); color: var(--ink); border: 2px solid var(--focus); border-radius: 8px; }
+.skip:focus { top: 12px; }
+.page { max-width: 1160px; margin: 0 auto; padding: 0 16px 48px; }
+@media (min-width: 720px) { .page { padding: 0 32px 64px; } }
+
+/* Masthead */
+.masthead { padding: 24px 0 24px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
+.brand-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; }
+.brand svg { width: 24px; height: 24px; flex: none; }
+.brand-mark { fill: var(--tag); stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.brand-hole { fill: var(--bg); stroke: currentColor; stroke-width: 1.5; }
+.brand-ver { color: var(--ink-2); font-weight: 400; }
+.theme-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 14px; }
+.theme-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.theme-toggle[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+h1 { font-family: var(--font-display); font-size: clamp(26px, 4.2vw, 36px); font-weight: 650; letter-spacing: -0.01em; }
+.root { margin: 8px 0 20px; color: var(--ink-2); }
+.root code { font-size: 14px; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 14px 36px; margin: 0; }
+.meta > div { min-width: 0; }
+.meta dt { margin-bottom: 4px; font-size: 13px; color: var(--ink-2); }
+.meta dd { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.badge { display: inline-block; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; }
+.badge-quiet { background: transparent; }
+
+/* Overview: the inspection tag with the score gauge, and the category cards */
+.overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-bottom: 28px; }
+@media (min-width: 860px) { .overview { grid-template-columns: 300px minmax(0, 1fr); align-items: start; } }
+.tag { position: relative; width: 100%; max-width: 420px; justify-self: center; padding: 46px 24px 0; overflow: hidden; border-radius: 18px; background: var(--tag); color: var(--tag-ink); text-align: center; }
+.tag-hole { position: absolute; top: 14px; left: 50%; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 3px var(--tag-line); }
+.tag-label { margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.seal { display: grid; place-items: center; width: 196px; height: 196px; margin: 0 auto; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--tag-line); }
+.gauge { display: block; width: 180px; height: 180px; }
+.gauge-track { fill: none; stroke: var(--track); stroke-width: 14; }
+.gauge-arc { fill: none; stroke: var(--grade, var(--ink-2)); stroke-width: 14; stroke-linecap: round; stroke-dasharray: 527.79; stroke-dashoffset: 527.79; }
+.gauge-arc.is-animated { transition: stroke-dashoffset 900ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+.gauge-arc.is-empty { stroke: transparent; }
+.gauge-grade { font-family: var(--font-display); font-size: 76px; font-weight: 700; fill: var(--grade, var(--ink)); }
+.gauge-score { font-size: 16px; fill: var(--ink-2); }
+.tag-verdict { margin: 16px 0 4px; font-family: var(--font-display); font-size: 20px; font-weight: 650; }
+.tag-summary { margin: 0 0 4px; font-size: 14px; }
+.tag-cap { margin: 0; font-size: 13px; }
+.tag-stub { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 20px -24px 0; padding: 12px 24px 14px; border-top: 2px dashed var(--tag-line); font-size: 12px; }
+.grade-a { --grade: var(--grade-a); }
+.grade-b { --grade: var(--grade-b); }
+.grade-c { --grade: var(--grade-c); }
+.grade-d { --grade: var(--grade-d); }
+.grade-f { --grade: var(--grade-f); }
+
+.block-title { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.cat { display: flex; flex-direction: column; gap: 8px; min-height: 124px; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.cat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cat-title { font-size: 14px; font-weight: 600; }
+.cat-score { flex: none; font-family: var(--font-display); font-size: 26px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; color: var(--band, var(--ink)); }
+.bar { height: 6px; overflow: hidden; border-radius: 3px; background: var(--track); }
+.bar-fill { display: block; width: 0; height: 100%; border-radius: 3px; background: var(--band, var(--ink-2)); }
+.cat-meta { margin: 0; font-size: 13px; color: var(--ink-2); }
+.cat.is-na { border-style: dashed; background: transparent; }
+.cat.is-na .cat-score { font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.band-a { --band: var(--grade-a); }
+.band-b { --band: var(--grade-b); }
+.band-c { --band: var(--grade-c); }
+.band-d { --band: var(--grade-d); }
+.band-f { --band: var(--grade-f); }
+.link-btn { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: var(--link); font-size: 13px; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Notes: hidden findings and analysis errors */
+.notes { display: grid; gap: 10px; margin: 0 0 28px; }
+.note { margin: 0; padding: 12px 16px; border: 1px solid var(--line); border-left: 4px solid var(--sev-info); border-radius: 8px; background: var(--surface); font-size: 14px; }
+.note-warn { border-left-color: var(--sev-medium); }
+.note-error { border-left-color: var(--sev-critical); font-weight: 600; }
+.note summary { font-weight: 600; cursor: pointer; }
+.note ul { margin: 10px 0 0; padding-left: 18px; }
+.note li { margin: 6px 0; }
+.note li code { margin: 0 6px; font-size: 13px; overflow-wrap: anywhere; }
+.note-detail { display: block; color: var(--ink-2); overflow-wrap: anywhere; }
+
+/* Findings: severity chips, filters and expandable rows */
+.section { margin-bottom: 40px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 14px; }
+h2 { font-family: var(--font-display); font-size: 24px; font-weight: 650; }
+h2:focus { outline: none; }
+h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.status { min-height: 1.55em; margin: 0; font-size: 14px; color: var(--ink-2); }
+.sev-critical { --sev: var(--sev-critical); }
+.sev-high { --sev: var(--sev-high); }
+.sev-medium { --sev: var(--sev-medium); }
+.sev-low { --sev: var(--sev-low); }
+.sev-info { --sev: var(--sev-info); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 14px 4px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); font-size: 14px; }
+.chip .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sev); }
+.chip-count { min-width: 1.4em; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] { border-color: var(--sev); box-shadow: inset 0 0 0 1px var(--sev); background: var(--surface-2); background: color-mix(in srgb, var(--sev) 14%, var(--surface)); }
+.chip:disabled { opacity: 0.5; cursor: default; }
+.controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (min-width: 720px) { .controls { grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); } }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 13px; color: var(--ink-2); }
+.field input, .field select { width: 100%; min-height: 38px; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); }
+.list-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.btn { min-height: 34px; padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); font-size: 14px; }
+
+.finding-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.finding { border: 1px solid var(--line); border-left: 4px solid var(--sev); border-radius: 8px; background: var(--surface); }
+.f-head { font-size: inherit; font-weight: inherit; }
+.f-toggle { display: grid; grid-template-columns: 76px minmax(0, 1fr) 16px; grid-template-areas: "sev main chev"; align-items: start; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 0 7px 7px 0; background: none; text-align: left; }
+.f-toggle:focus-visible { outline-offset: -2px; }
+.f-toggle:hover .f-title { text-decoration: underline; text-underline-offset: 2px; }
+.sev-badge { display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); background: color-mix(in srgb, var(--sev) 13%, var(--surface)); color: var(--sev); font-size: 12px; font-weight: 650; text-align: center; white-space: nowrap; }
+.f-toggle .sev-badge { grid-area: sev; margin-top: 1px; }
+.f-main { grid-area: main; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.f-title { font-weight: 600; }
+.f-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--ink-2); }
+.f-rule { font-weight: 600; }
+.f-where { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.chev { grid-area: chev; width: 9px; height: 9px; margin-top: 6px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: rotate(45deg); transition: transform 150ms ease; }
+.f-toggle[aria-expanded="true"] .chev { transform: translateY(4px) rotate(-135deg); }
+.f-body { display: grid; gap: 10px; padding: 2px 16px 16px 102px; }
+.f-desc, .f-fix { max-width: 78ch; margin: 0; white-space: pre-line; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; font-size: 14px; }
+.facts dt { color: var(--ink-2); }
+.facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.facts .code { font-family: var(--mono); font-size: 13px; }
+.f-label { margin-top: 4px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
+.evidence { max-height: 320px; margin: 0; padding: 10px 12px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.refs { margin: 0; padding-left: 18px; font-size: 14px; }
+.refs li { margin: 2px 0; overflow-wrap: anywhere; }
+.empty { padding: 28px 16px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--ink-2); text-align: center; }
+.empty p { margin: 0 0 12px; }
+.empty p:last-child { margin: 0; }
+@media (max-width: 640px) {
+  .f-toggle { grid-template-columns: minmax(0, 1fr) 16px; grid-template-areas: "sev chev" "main main"; gap: 6px 12px; }
+  .f-toggle .sev-badge { justify-self: start; }
+  .f-body { padding: 2px 14px 14px; }
+}
+
+/* Rules evaluated */
+.coverage { max-width: 80ch; margin: 0 0 14px; color: var(--ink-2); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.rules-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rules-table th, .rules-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.rules-table thead th { background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.rules-table tbody tr:last-child > * { border-bottom: 0; }
+.rules-table tbody th { font-weight: 600; white-space: nowrap; }
+.pass { color: var(--grade-a); font-weight: 600; }
+.pass::before { content: ""; display: inline-block; width: 5px; height: 10px; margin: 0 8px 0 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+@media (max-width: 640px) {
+  .rules-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .rules-table, .rules-table tbody, .rules-table tr { display: block; width: 100%; }
+  .rules-table tr { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .rules-table tbody tr:last-child { border-bottom: 0; }
+  .rules-table tbody th, .rules-table td { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; padding: 3px 0; border: 0; white-space: normal; }
+  .rules-table tbody th::before, .rules-table td::before { content: attr(data-label); color: var(--ink-2); font-size: 13px; font-weight: 400; }
+  .rules-table td > * { justify-self: start; }
+}
+
+.footer { padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 13px; }
+.footer p { max-width: 80ch; margin: 0 0 6px; }
+.noscript { margin: 0 0 24px; padding: 16px; border: 2px solid var(--sev-medium); border-radius: 8px; background: var(--surface); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* Print: light colors, every finding expanded, no controls */
+@page { margin: 14mm; }
+@media print {
+  :root, :root[data-theme] {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f5f7fa;
+    --ink: #17202d;
+    --ink-2: #4b5667;
+    --line: #d6dce4;
+    --line-strong: #aab5c3;
+    --link: #1b57b8;
+    --tag-ink: #17202d;
+    --tag-line: rgba(23, 32, 45, 0.4);
+    --track: #e2e7ee;
+    --sev-critical: #b42318;
+    --sev-high: #c4320a;
+    --sev-medium: #9a6700;
+    --sev-low: #1f6fb5;
+    --sev-info: #5d6878;
+    --grade-a: #1f7a48;
+    --grade-b: #4d7c0f;
+    --grade-c: #9a6700;
+    --grade-d: #c4320a;
+    --grade-f: #b42318;
+  }
+  html { scrollbar-gutter: auto; }
+  body { font-size: 11pt; }
+  .page { max-width: none; padding: 0; }
+  .skip, .theme-toggle, .controls, .list-actions, .link-btn, .chev, #aw-empty-reset { display: none !important; }
+  .f-body[hidden] { display: grid !important; }
+  .tag { border: 2px solid var(--ink); background: var(--surface); }
+  .tag-hole { background: var(--surface); box-shadow: inset 0 0 0 2px var(--ink); }
+  .finding, .cat, .tag, .note, .rules-table tr { break-inside: avoid; }
+  .evidence { max-height: none; overflow: visible; }
+}
+</style>
+<script>
+(function () {
+  'use strict';
+
+  var doc = document;
+  var rootEl = doc.documentElement;
+  var THEME_KEY = 'airworthy-theme';
+  var SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
+  var SEV_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
+  var GRADES = ['A', 'B', 'C', 'D', 'F'];
+  var VERDICT = {
+    'A': 'Strong configuration',
+    'B': 'Good, with a few gaps',
+    'C': 'Needs attention',
+    'D': 'Weak configuration',
+    'F': 'Unsafe configuration'
+  };
+  var CONFIDENCE_NOTE = {
+    medium: 'medium: the documented behavior is only partly confirmed',
+    low: 'low: heuristic check'
+  };
+  var HARNESS_LABEL = {
+    'vscode-copilot': 'VS Code Copilot',
+    'claude-code': 'Claude Code',
+    'copilot-cli': 'Copilot CLI',
+    'mcp': 'MCP',
+    'generic': 'Any harness'
+  };
+  var HARNESS_ORDER = ['vscode-copilot', 'claude-code', 'copilot-cli', 'mcp', 'generic'];
+  // References become links only when they are https URLs on one of these documentation hosts.
+  var LINK_HOSTS = ['code.visualstudio.com', 'docs.github.com', 'github.com', 'docs.anthropic.com',
+    'code.claude.com', 'genai.owasp.org', 'owasp.org', 'docs.oasis-open.org', 'modelcontextprotocol.io',
+    'learn.microsoft.com'];
+  var GAUGE_LENGTH = 2 * Math.PI * 84;
+  var PLAIN_TEXT = /^[\t\n\x20-\x7e]*$/;
+
+  // ---- Theme: applied at once, since this script runs in <head> before the first paint ----
+  function storedTheme() {
+    try { var v = window.localStorage.getItem(THEME_KEY); return (v === 'light' || v === 'dark') ? v : null; } catch (e) { return null; }
+  }
+  function saveTheme(v) {
+    try { window.localStorage.setItem(THEME_KEY, v); } catch (e) { /* storage blocked: the choice lasts for this page only */ }
+  }
+  function systemTheme() {
+    try { return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) { return 'light'; }
+  }
+  function currentTheme() {
+    var t = rootEl.getAttribute('data-theme');
+    return (t === 'light' || t === 'dark') ? t : systemTheme();
+  }
+  var initialTheme = storedTheme();
+  if (initialTheme) { rootEl.setAttribute('data-theme', initialTheme); }
+
+  // ---- Small helpers. Data only ever reaches the page as text. ----
+  function has(map, key) { return Object.prototype.hasOwnProperty.call(map, key); }
+  function str(v) { return (v === null || v === undefined) ? '' : String(v); }
+  function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+  function arr(v) { return Array.isArray(v) ? v : []; }
+  function obj(v) { return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}; }
+  function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
+  function sevOf(v) { return SEVERITIES.indexOf(v) >= 0 ? v : 'info'; }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  function byId(id) { return doc.getElementById(id); }
+  function harnessLabel(h) { return has(HARNESS_LABEL, h) ? HARNESS_LABEL[h] : str(h); }
+  function band(score) { return score >= 90 ? 'a' : score >= 80 ? 'b' : score >= 70 ? 'c' : score >= 60 ? 'd' : 'f'; }
+  function reducedMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+  }
+
+  // Shows control, invisible and direction-changing characters, Unicode tag characters (used to
+  // smuggle hidden instructions) and lone surrogates as [U+XXXX], so that hostile text can
+  // neither hide content nor visually reorder it.
+  function isInvisible(c) {
+    return (c < 32 && c !== 9 && c !== 10) || (c >= 127 && c < 160) || c === 0xad || c === 0x34f ||
+      c === 0x61c || c === 0x115f || c === 0x1160 || c === 0x17b4 || c === 0x17b5 ||
+      (c >= 0x180b && c <= 0x180f) || (c >= 0x200b && c <= 0x200f) || (c >= 0x2028 && c <= 0x202e) ||
+      (c >= 0x2060 && c <= 0x206f) || c === 0x3164 || c === 0xfeff || c === 0xffa0 || (c >= 0xfff9 && c <= 0xfffb) ||
+      (c >= 0xe0000 && c <= 0xe0fff);
+  }
+  function codeLabel(c) {
+    var h = c.toString(16).toUpperCase();
+    return '[U+' + (h.length < 4 ? ('000' + h).slice(-4) : h) + ']';
+  }
+  function visible(value) {
+    var s = str(value);
+    if (PLAIN_TEXT.test(s)) { return s; }
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      var width = 1;
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+        var low = s.charCodeAt(i + 1);
+        if (low >= 0xdc00 && low <= 0xdfff) {
+          c = (c - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+          width = 2;
+        }
+      }
+      if ((width === 1 && c >= 0xd800 && c <= 0xdfff) || isInvisible(c)) {
+        out += codeLabel(c);
+      } else {
+        out += s.substr(i, width);
+      }
+      i += width - 1;
+    }
+    return out;
+  }
+  function setText(node, value) { if (node) { node.textContent = visible(value); } }
+  function el(tag, className, text) {
+    var node = doc.createElement(tag);
+    if (className) { node.className = className; }
+    if (text !== undefined) { node.textContent = visible(text); }
+    return node;
+  }
+  function append(parent) {
+    for (var i = 1; i < arguments.length; i++) { if (arguments[i]) { parent.appendChild(arguments[i]); } }
+    return parent;
+  }
+  function button(className, text, onClick) {
+    var b = el('button', className, text);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function cmpText(a, b) { a = a.toLowerCase(); b = b.toLowerCase(); return a < b ? -1 : (a > b ? 1 : 0); }
+  function isEditable(t) {
+    if (!t || !t.tagName) { return false; }
+    var tag = t.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable === true;
+  }
+
+  // A link is created only for an https URL on an allowlisted host, parsed by the URL constructor.
+  function safeHref(ref) {
+    if (typeof URL !== 'function' || !/^https:/i.test(ref)) { return null; }
+    var u;
+    try { u = new URL(ref); } catch (e) { return null; }
+    if (u.protocol !== 'https:' || u.username || u.password || LINK_HOSTS.indexOf(u.hostname) < 0) { return null; }
+    return u.href;
+  }
+  function refItem(ref) {
+    var li = el('li');
+    var href = safeHref(ref);
+    if (href) {
+      var a = el('a', null, ref);
+      a.setAttribute('href', href);
+      a.setAttribute('rel', 'noopener noreferrer');
+      a.setAttribute('referrerpolicy', 'no-referrer');
+      a.setAttribute('target', '_blank');
+      li.appendChild(a);
+    } else {
+      li.appendChild(el('span', 'ref-text', ref));
+    }
+    return li;
+  }
+
+  function readData() {
+    var node = byId('aw-data');
+    if (!node) { return null; }
+    try {
+      var d = JSON.parse(node.textContent || '');
+      return (d && typeof d === 'object' && !Array.isArray(d)) ? d : null;
+    } catch (e) { return null; }
+  }
+  function showFatal(message) {
+    var main = byId('aw-main');
+    var p = el('p', 'note note-error', message);
+    p.setAttribute('role', 'alert');
+    if (main) { main.insertBefore(p, main.firstChild); }
+  }
+  function timeParts(iso) {
+    var m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?(\.\d+)?Z$/.exec(iso);
+    return m ? { date: m[1], text: m[1] + ' ' + m[2] + ' UTC' } : { date: '', text: iso };
+  }
+  function countsSentence(counts) {
+    var parts = [];
+    var total = 0;
+    SEVERITIES.forEach(function (s) {
+      var n = Math.max(0, Math.floor(num(counts[s])));
+      total += n;
+      if (n) { parts.push(n + ' ' + s); }
+    });
+    if (!total) { return 'No findings'; }
+    var last = parts.pop();
+    return (parts.length ? parts.join(', ') + ' and ' + last : last) + (total === 1 ? ' finding' : ' findings');
+  }
+
+  function setupThemeToggle() {
+    var b = byId('aw-theme');
+    if (!b) { return; }
+    function sync() { b.setAttribute('aria-pressed', currentTheme() === 'dark' ? 'true' : 'false'); }
+    b.addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      rootEl.setAttribute('data-theme', next);
+      saveTheme(next);
+      sync();
+    });
+    try {
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mq.addEventListener) { mq.addEventListener('change', sync); } else if (mq.addListener) { mq.addListener(sync); }
+    } catch (e) { /* no media query support: the button still works */ }
+    sync();
+  }
+
+  function renderHeader(d) {
+    var tool = obj(d.tool);
+    var version = str(tool.version);
+    var time = timeParts(str(d.scannedAt));
+    setText(byId('aw-version'), version ? 'v' + version : '');
+    setText(byId('aw-root'), str(d.root) || 'Unknown folder');
+    var timeNode = byId('aw-time');
+    if (d.scannedAt) { timeNode.setAttribute('datetime', str(d.scannedAt)); }
+    setText(timeNode, time.text || 'Unknown');
+
+    var harnesses = byId('aw-harnesses');
+    var list = arr(d.harnesses).map(str).filter(Boolean);
+    if (!list.length) { harnesses.appendChild(el('span', 'badge badge-quiet', 'None detected')); }
+    list.forEach(function (h) { harnesses.appendChild(el('span', 'badge', harnessLabel(h))); });
+
+    var o = obj(d.options);
+    var notes = [];
+    if (o.redact === true) { notes.push('Paths redacted'); }
+    if (sevOf(o.minSeverity) !== 'info') { notes.push('Lists ' + sevOf(o.minSeverity) + ' and above'); }
+    if (SEVERITIES.indexOf(o.failOn) >= 0) { notes.push('CI gate (fail on ' + o.failOn + '): ' + (num(o.exitCode) ? 'failed' : 'passed')); }
+    if (!notes.length) { notes.push('Defaults'); }
+    var opts = byId('aw-options');
+    notes.forEach(function (n) { opts.appendChild(el('span', 'badge badge-quiet', n)); });
+
+    setText(byId('aw-stamp-tool'), 'Checked by ' + (str(tool.name) || 'Airworthy') + (version ? ' ' + version : ''));
+    setText(byId('aw-stamp-date'), time.date);
+  }
+
+  function renderScore(d) {
+    var s = obj(d.score);
+    var score = Math.round(clamp(num(s.score), 0, 100));
+    var grade = GRADES.indexOf(s.grade) >= 0 ? s.grade : '';
+    var counts = obj(d.counts);
+    byId('aw-tag').className = 'tag grade-' + (grade ? grade.toLowerCase() : 'none');
+    setText(byId('aw-grade'), grade || '?');
+    setText(byId('aw-score'), score + ' / 100');
+    byId('aw-gauge').setAttribute('aria-label', 'Overall score ' + score + ' out of 100, grade ' + (grade || 'unknown'));
+    setText(byId('aw-verdict'), grade ? VERDICT[grade] : 'Not graded');
+    setText(byId('aw-summary'), countsSentence(counts));
+    if (num(counts.critical) > 0) {
+      var cap = byId('aw-cap');
+      setText(cap, 'A critical finding caps the score at 69.');
+      cap.hidden = false;
+    }
+    var arc = byId('aw-arc');
+    if (score === 0) { arc.classList.add('is-empty'); }
+    if (!reducedMotion()) {
+      void window.getComputedStyle(arc).strokeDashoffset; // commit the empty ring so the sweep animates
+      arc.classList.add('is-animated');
+    }
+    arc.style.strokeDashoffset = (GAUGE_LENGTH * (1 - score / 100)).toFixed(2);
+    doc.title = 'Airworthy report: grade ' + (grade || '?') + ', ' + score + '/100';
+  }
+
+  function renderCategories(d, findings, showCategory) {
+    var host = byId('aw-categories');
+    var cats = arr(d.categories).map(obj);
+    var counts = Object.create(null);
+    findings.forEach(function (f) { counts[f.category] = (counts[f.category] || 0) + 1; });
+    var totalWeight = 0;
+    cats.forEach(function (c) { if (c.applicable === true) { totalWeight += Math.max(0, num(c.weight)); } });
+    cats.forEach(function (c) {
+      var id = str(c.id);
+      var applicable = c.applicable === true;
+      var score = Math.round(clamp(num(c.score), 0, 100));
+      var n = counts[id] || 0;
+      var li = el('li', applicable ? 'cat band-' + band(score) : 'cat is-na');
+      var scoreNode = el('span', 'cat-score', applicable ? String(score) : 'Not scored');
+      if (applicable) { scoreNode.appendChild(el('span', 'sr-only', ' out of 100')); }
+      li.appendChild(append(el('div', 'cat-head'), el('h4', 'cat-title', str(c.title) || id), scoreNode));
+      if (applicable) {
+        var bar = el('div', 'bar');
+        var fill = el('span', 'bar-fill');
+        bar.setAttribute('aria-hidden', 'true');
+        fill.style.width = score + '%';
+        li.appendChild(append(bar, fill));
+        var share = totalWeight > 0 ? Math.round(100 * Math.max(0, num(c.weight)) / totalWeight) : 0;
+        li.appendChild(el('p', 'cat-meta', (n ? plural(n, 'finding') : 'No findings') + ', ' + share + '% of the overall score'));
+      } else {
+        li.appendChild(el('p', 'cat-meta', 'No rule in this category applies to the detected harnesses.'));
+      }
+      if (n) {
+        li.appendChild(button('link-btn', n === 1 ? 'Show this finding' : 'Show these ' + n + ' findings', function () { showCategory(id); }));
+      }
+      host.appendChild(li);
+    });
+  }
+
+  function renderNotes(d, findings) {
+    var host = byId('aw-notes');
+    var counts = obj(d.counts);
+    var minSev = sevOf(obj(d.options).minSeverity);
+    var total = 0;
+    SEVERITIES.forEach(function (s) { total += Math.max(0, Math.floor(num(counts[s]))); });
+    var hiddenCount = total - findings.length;
+    if (hiddenCount > 0 && minSev !== 'info') {
+      host.appendChild(el('p', 'note', plural(hiddenCount, 'finding') + ' below ' + minSev + ' severity ' +
+        (hiddenCount === 1 ? 'is' : 'are') + ' not listed. The score still counts ' + (hiddenCount === 1 ? 'it.' : 'them.')));
+    }
+    var errors = arr(d.errors).map(obj);
+    if (errors.length) {
+      var box = el('details', 'note note-warn');
+      box.appendChild(el('summary', null, errors.length === 1 ? '1 file or rule could not be fully analyzed'
+        : errors.length + ' files or rules could not be fully analyzed'));
+      var ul = el('ul');
+      errors.forEach(function (e) {
+        ul.appendChild(append(el('li'),
+          el('span', null, str(e.title) || str(e.ruleId)),
+          e.path ? el('code', null, str(e.path)) : null,
+          e.evidence ? el('span', 'note-detail', str(e.evidence)) : null));
+      });
+      box.appendChild(ul);
+      host.appendChild(box);
+    }
+    host.hidden = !host.firstChild;
+  }
+
+  function normalizeFinding(raw, index) {
+    var f = obj(raw);
+    var line = Math.floor(num(f.line));
+    var n = {
+      index: index,
+      ruleId: str(f.ruleId),
+      title: str(f.title),
+      severity: sevOf(f.severity),
+      category: str(f.category),
+      harness: str(f.harness),
+      description: str(f.description),
+      evidence: str(f.evidence),
+      path: str(f.path),
+      line: line > 0 ? line : 0,
+      key: str(f.key),
+      fix: str(f.fix),
+      confidence: str(f.confidence),
+      references: arr(f.references).map(str).filter(Boolean)
+    };
+    n.rank = SEVERITIES.length - SEVERITIES.indexOf(n.severity);
+    return n;
+  }
+
+  function cmpFile(a, b) {
+    if (!a.path !== !b.path) { return a.path ? -1 : 1; }
+    return cmpText(a.path, b.path) || (a.line - b.line);
+  }
+  var SORTS = {
+    severity: function (a, b) { return (b.rank - a.rank) || cmpText(a.ruleId, b.ruleId) || cmpFile(a, b) || (a.index - b.index); },
+    rule: function (a, b) { return cmpText(a.ruleId, b.ruleId) || (b.rank - a.rank) || cmpFile(a, b) || (a.index - b.index); },
+    file: function (a, b) { return cmpFile(a, b) || (b.rank - a.rank) || cmpText(a.ruleId, b.ruleId) || (a.index - b.index); }
+  };
+
+  function fact(dl, label, value, className) {
+    if (!value) { return; }
+    append(dl, el('dt', null, label), el('dd', className || null, value));
+  }
+
+  function buildFinding(f, catTitles) {
+    var id = 'aw-f' + f.index;
+    var categoryTitle = catTitles[f.category] || f.category;
+    var where = f.path ? f.path + (f.line ? ':' + f.line : '') : f.key;
+    var li = el('li', 'finding sev-' + f.severity);
+
+    var btn = el('button', 'f-toggle');
+    btn.type = 'button';
+    btn.id = id + '-btn';
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-controls', id + '-body');
+    var chev = el('span', 'chev');
+    chev.setAttribute('aria-hidden', 'true');
+    append(btn,
+      el('span', 'sev-badge', SEV_LABEL[f.severity]),
+      append(el('span', 'f-main'),
+        el('span', 'f-title', f.title || f.ruleId || 'Finding'),
+        append(el('span', 'f-meta'), el('span', 'f-rule', f.ruleId), where ? el('span', 'f-where', where) : null)),
+      chev);
+
+    var body = el('div', 'f-body');
+    body.id = id + '-body';
+    body.hidden = true;
+    if (f.description) { body.appendChild(el('p', 'f-desc', f.description)); }
+    var facts = el('dl', 'facts');
+    fact(facts, 'Rule', f.ruleId);
+    fact(facts, 'Category', categoryTitle);
+    fact(facts, 'Harness', harnessLabel(f.harness));
+    fact(facts, 'Confidence', has(CONFIDENCE_NOTE, f.confidence) ? CONFIDENCE_NOTE[f.confidence] : f.confidence);
+    fact(facts, 'File', f.path, 'code');
+    fact(facts, 'Line', f.line ? String(f.line) : '');
+    fact(facts, 'Setting', f.key, 'code');
+    body.appendChild(facts);
+    if (f.evidence) {
+      append(body, el('h4', 'f-label', 'Evidence'), append(el('pre', 'evidence'), el('code', null, f.evidence)));
+    }
+    if (f.fix) { append(body, el('h4', 'f-label', 'How to fix'), el('p', 'f-fix', f.fix)); }
+    if (f.references.length) {
+      var refs = el('ul', 'refs');
+      f.references.forEach(function (r) { refs.appendChild(refItem(r)); });
+      append(body, el('h4', 'f-label', 'References'), refs);
+    }
+    append(li, append(el('h3', 'f-head'), btn), body);
+
+    var item = {
+      f: f, li: li, btn: btn, body: body,
+      hay: [f.ruleId, f.title, f.severity, f.category, categoryTitle, f.harness, harnessLabel(f.harness), f.description,
+        f.evidence, f.path, f.key, f.fix, f.confidence, f.references.join(' ')].map(visible).join('\n').toLowerCase()
+    };
+    btn.addEventListener('click', function () { setOpen(item, btn.getAttribute('aria-expanded') !== 'true'); });
+    return item;
+  }
+  function setOpen(item, open) {
+    item.btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    item.body.hidden = !open;
+  }
+
+  function keyCounts(findings, field, preferred) {
+    var counts = Object.create(null);
+    var keys = [];
+    findings.forEach(function (f) {
+      var k = f[field];
+      if (!k) { return; }
+      if (!(k in counts)) { counts[k] = 0; keys.push(k); }
+      counts[k]++;
+    });
+    keys.sort(function (a, b) {
+      var ia = preferred.indexOf(a);
+      var ib = preferred.indexOf(b);
+      if (ia < 0) { ia = preferred.length; }
+      if (ib < 0) { ib = preferred.length; }
+      return (ia - ib) || cmpText(a, b);
+    });
+    return { keys: keys, counts: counts };
+  }
+  function fillSelect(select, info, label) {
+    info.keys.forEach(function (k) {
+      var option = el('option', null, label(k) + ' (' + info.counts[k] + ')');
+      option.value = k;
+      select.appendChild(option);
+    });
+  }
+  function buildChips(findings, onToggle) {
+    var host = byId('aw-chips');
+    var counts = Object.create(null);
+    var chips = Object.create(null);
+    SEVERITIES.forEach(function (s) { counts[s] = 0; });
+    findings.forEach(function (f) { counts[f.severity]++; });
+    SEVERITIES.forEach(function (s) {
+      var b = el('button', 'chip sev-' + s);
+      var dot = el('span', 'dot');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', 'false');
+      dot.setAttribute('aria-hidden', 'true');
+      append(b, dot, el('span', null, SEV_LABEL[s]), el('span', 'chip-count', String(counts[s])),
+        el('span', 'sr-only', counts[s] === 1 ? ' finding' : ' findings'));
+      b.disabled = counts[s] === 0;
+      b.addEventListener('click', function () { onToggle(s); });
+      host.appendChild(b);
+      chips[s] = b;
+    });
+    return chips;
+  }
+
+  function setupFindings(findings, catTitles, catOrder) {
+    var list = byId('aw-findings');
+    var search = byId('aw-search');
+    var catSelect = byId('aw-category');
+    var harnessSelect = byId('aw-harness');
+    var sortSelect = byId('aw-sort');
+    var status = byId('aw-status');
+    var empty = byId('aw-empty');
+    var resetButton = byId('aw-reset');
+    var view = { showCategory: function () {}, showRule: function () {} };
+    var items = findings.map(function (f) { return buildFinding(f, catTitles); });
+    function freshState(sort) { return { sev: Object.create(null), category: '', harness: '', query: '', sort: sort || 'severity' }; }
+    var state = freshState();
+
+    // Undo any form state the browser restored on reload.
+    search.value = '';
+    sortSelect.value = 'severity';
+
+    if (!items.length) {
+      byId('aw-filters').hidden = true;
+      setText(status, 'No findings');
+      setText(byId('aw-empty-text'), 'No findings: every rule that applies to the detected harnesses passed.');
+      byId('aw-empty-reset').hidden = true;
+      empty.hidden = false;
+      return view;
+    }
+
+    var chips = buildChips(findings, function (s) {
+      if (state.sev[s]) { delete state.sev[s]; } else { state.sev[s] = true; }
+      apply();
+    });
+    fillSelect(catSelect, keyCounts(findings, 'category', catOrder), function (k) { return catTitles[k] || k; });
+    fillSelect(harnessSelect, keyCounts(findings, 'harness', HARNESS_ORDER), harnessLabel);
+    catSelect.value = '';
+    harnessSelect.value = '';
+
+    function apply() {
+      var terms = state.query.toLowerCase().split(/\s+/).filter(Boolean);
+      var anySev = SEVERITIES.some(function (s) { return state.sev[s] === true; });
+      var shown = 0;
+      items.forEach(function (it) {
+        var f = it.f;
+        var ok = (!anySev || state.sev[f.severity] === true) &&
+          (!state.category || f.category === state.category) &&
+          (!state.harness || f.harness === state.harness) &&
+          terms.every(function (t) { return it.hay.indexOf(t) >= 0; });
+        it.li.hidden = !ok;
+        if (ok) { shown++; }
+      });
+      SEVERITIES.forEach(function (s) { chips[s].setAttribute('aria-pressed', state.sev[s] === true ? 'true' : 'false'); });
+      resetButton.hidden = !(anySev || state.category || state.harness || terms.length);
+      setText(status, shown === items.length ? 'Showing all ' + plural(items.length, 'finding')
+        : 'Showing ' + shown + ' of ' + plural(items.length, 'finding'));
+      setText(byId('aw-empty-text'), 'No findings match these filters.');
+      empty.hidden = shown > 0;
+    }
+    function order() {
+      var compare = has(SORTS, state.sort) ? SORTS[state.sort] : SORTS.severity;
+      var frag = doc.createDocumentFragment();
+      items.slice().sort(function (a, b) { return compare(a.f, b.f); }).forEach(function (it) { frag.appendChild(it.li); });
+      list.appendChild(frag);
+    }
+    function reset() {
+      state = freshState(state.sort);
+      search.value = '';
+      catSelect.value = '';
+      harnessSelect.value = '';
+      apply();
+    }
+    function focusList() { var h = byId('findings-title'); if (h) { h.focus(); } }
+
+    search.addEventListener('input', function () { state.query = search.value; apply(); });
+    search.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && search.value) { search.value = ''; state.query = ''; apply(); e.preventDefault(); }
+    });
+    catSelect.addEventListener('change', function () { state.category = catSelect.value; apply(); });
+    harnessSelect.addEventListener('change', function () { state.harness = harnessSelect.value; apply(); });
+    sortSelect.addEventListener('change', function () { state.sort = sortSelect.value; order(); });
+    byId('aw-expand').addEventListener('click', function () { items.forEach(function (it) { setOpen(it, true); }); });
+    byId('aw-collapse').addEventListener('click', function () { items.forEach(function (it) { setOpen(it, false); }); });
+    resetButton.addEventListener('click', function () { reset(); search.focus(); });
+    byId('aw-empty-reset').addEventListener('click', function () { reset(); search.focus(); });
+    doc.addEventListener('keydown', function (e) {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || isEditable(e.target)) { return; }
+      e.preventDefault();
+      search.focus();
+    });
+
+    view.showCategory = function (id) { reset(); state.category = id; catSelect.value = id; apply(); focusList(); };
+    view.showRule = function (id) { reset(); state.query = id; search.value = id; apply(); focusList(); };
+    order();
+    apply();
+    return view;
+  }
+
+  function cell(tr, tag, label, content) {
+    var c = el(tag);
+    c.setAttribute('data-label', label);
+    if (tag === 'th') { c.setAttribute('scope', 'row'); }
+    if (typeof content === 'string') { c.textContent = visible(content); } else if (content) { c.appendChild(content); }
+    tr.appendChild(c);
+  }
+  function renderRules(d, findings, catTitles, showRule) {
+    var rules = arr(d.rules).map(obj);
+    var tbody = byId('aw-rules');
+    var minSev = sevOf(obj(d.options).minSeverity);
+    var hits = Object.create(null);
+    var perHarness = Object.create(null);
+    var withFindings = 0;
+    findings.forEach(function (f) { hits[f.ruleId] = (hits[f.ruleId] || 0) + 1; });
+    rules.forEach(function (r) {
+      var id = str(r.id);
+      var h = str(r.harness);
+      var s = sevOf(r.severity);
+      var n = hits[id] || 0;
+      if (n) { withFindings++; }
+      perHarness[h] = (perHarness[h] || 0) + 1;
+      var tr = el('tr');
+      cell(tr, 'th', 'Rule', id);
+      cell(tr, 'td', 'Title', str(r.title));
+      cell(tr, 'td', 'Category', catTitles[str(r.category)] || str(r.category));
+      cell(tr, 'td', 'Harness', harnessLabel(h));
+      cell(tr, 'td', 'Severity', el('span', 'sev-badge sev-' + s, SEV_LABEL[s]));
+      cell(tr, 'td', 'Confidence', str(r.confidence));
+      cell(tr, 'td', 'Result', n ? button('link-btn', 'Show ' + plural(n, 'finding'), function () { showRule(id); })
+        : el('span', 'pass', minSev === 'info' ? 'Passed' : 'Nothing at ' + minSev + ' or above'));
+      tbody.appendChild(tr);
+    });
+    var coverage = byId('aw-coverage');
+    if (!rules.length) {
+      setText(coverage, 'No rule applies to the detected harnesses, so no rule was evaluated.');
+      byId('aw-rules-wrap').hidden = true;
+      return;
+    }
+    var extra = Object.keys(perHarness).filter(function (h) { return HARNESS_ORDER.indexOf(h) < 0; }).sort(cmpText);
+    var perHarnessText = HARNESS_ORDER.concat(extra)
+      .filter(function (h) { return perHarness[h]; })
+      .map(function (h) { return harnessLabel(h) + ' ' + perHarness[h]; })
+      .join(', ');
+    setText(coverage, plural(rules.length, 'rule') + ' evaluated: ' + (rules.length - withFindings) +
+      (minSev === 'info' ? ' passed, ' : ' without reported findings, ') + withFindings + ' with findings. Rules per harness: ' +
+      perHarnessText + '.');
+  }
+
+  function start() {
+    setupThemeToggle();
+    var data = readData();
+    if (!data) {
+      showFatal('The report data could not be read. The file may be damaged or truncated: run Airworthy again to regenerate it.');
+      return;
+    }
+    var catTitles = Object.create(null);
+    var catOrder = [];
+    arr(data.categories).forEach(function (c) {
+      c = obj(c);
+      catTitles[str(c.id)] = str(c.title) || str(c.id);
+      catOrder.push(str(c.id));
+    });
+    var findings = arr(data.findings).map(normalizeFinding);
+    renderHeader(data);
+    renderScore(data);
+    var view = setupFindings(findings, catTitles, catOrder);
+    renderCategories(data, findings, view.showCategory);
+    renderNotes(data, findings);
+    renderRules(data, findings, catTitles, view.showRule);
+  }
+
+  if (doc.readyState === 'loading') { doc.addEventListener('DOMContentLoaded', start); } else { start(); }
+})();
+</script>
+</head>
+<body>
+<a class="skip" href="#findings-title">Skip to findings</a>
+<div class="page">
+<header class="masthead">
+  <div class="brand-row">
+    <span class="brand"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="brand-mark" d="M3.5 6A2.5 2.5 0 0 1 6 3.5h5.6c.66 0 1.3.26 1.77.73l6.9 6.9a2.5 2.5 0 0 1 0 3.54l-5.5 5.5a2.5 2.5 0 0 1-3.54 0l-6.9-6.9A2.5 2.5 0 0 1 3.5 11.6z"></path><circle class="brand-hole" cx="8.5" cy="8.5" r="1.9"></circle></svg><span>Airworthy</span><span class="brand-ver" id="aw-version"></span></span>
+    <button type="button" class="theme-toggle" id="aw-theme" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6z"></path></svg><span>Dark theme</span></button>
+  </div>
+  <h1>Harness security report</h1>
+  <p class="root"><span class="sr-only">Analyzed folder: </span><code id="aw-root"></code></p>
+  <dl class="meta">
+    <div><dt>Scanned</dt><dd><time id="aw-time"></time></dd></div>
+    <div><dt>Harnesses detected</dt><dd id="aw-harnesses"></dd></div>
+    <div><dt>Options</dt><dd id="aw-options"></dd></div>
+  </dl>
+</header>
+<main id="aw-main">
+  <noscript><p class="noscript">This report needs JavaScript to show the score and the findings. The results are also embedded as JSON at the end of this file.</p></noscript>
+  <section class="overview" aria-labelledby="overview-title">
+    <h2 id="overview-title" class="sr-only">Overview</h2>
+    <div class="tag" id="aw-tag">
+      <span class="tag-hole" aria-hidden="true"></span>
+      <p class="tag-label">Overall score</p>
+      <div class="seal">
+        <svg class="gauge" id="aw-gauge" viewBox="0 0 200 200" width="180" height="180" role="img" aria-label="Overall score" focusable="false">
+          <circle class="gauge-track" cx="100" cy="100" r="84"></circle>
+          <circle class="gauge-arc" id="aw-arc" cx="100" cy="100" r="84" transform="rotate(-90 100 100)"></circle>
+          <text class="gauge-grade" id="aw-grade" x="100" y="112" text-anchor="middle" aria-hidden="true"></text>
+          <text class="gauge-score" id="aw-score" x="100" y="146" text-anchor="middle" aria-hidden="true"></text>
+        </svg>
+      </div>
+      <p class="tag-verdict" id="aw-verdict"></p>
+      <p class="tag-summary" id="aw-summary"></p>
+      <p class="tag-cap" id="aw-cap" hidden></p>
+      <div class="tag-stub"><span id="aw-stamp-tool"></span><span id="aw-stamp-date"></span></div>
+    </div>
+    <div class="categories">
+      <h3 class="block-title">Score by category</h3>
+      <ul class="cat-grid" id="aw-categories"></ul>
+    </div>
+  </section>
+  <div class="notes" id="aw-notes" hidden></div>
+  <section class="section" aria-labelledby="findings-title">
+    <div class="section-head">
+      <h2 id="findings-title" tabindex="-1">Findings</h2>
+      <p class="status" id="aw-status" role="status" aria-live="polite"></p>
+    </div>
+    <div id="aw-filters">
+      <div class="chips" id="aw-chips" role="group" aria-label="Filter by severity"></div>
+      <div class="controls">
+        <div class="field"><label for="aw-search">Search (press /)</label><input type="search" id="aw-search" placeholder="Rule, file, setting or text" autocomplete="off" spellcheck="false" aria-keyshortcuts="/"></div>
+        <div class="field"><label for="aw-category">Category</label><select id="aw-category" autocomplete="off"><option value="">All categories</option></select></div>
+        <div class="field"><label for="aw-harness">Harness</label><select id="aw-harness" autocomplete="off"><option value="">All harnesses</option></select></div>
+        <div class="field"><label for="aw-sort">Sort by</label><select id="aw-sort" autocomplete="off"><option value="severity">Severity</option><option value="rule">Rule</option><option value="file">File</option></select></div>
+      </div>
+      <div class="list-actions">
+        <button type="button" class="btn" id="aw-expand">Expand all</button>
+        <button type="button" class="btn" id="aw-collapse">Collapse all</button>
+        <button type="button" class="btn" id="aw-reset" hidden>Clear filters</button>
+      </div>
+    </div>
+    <ol class="finding-list" id="aw-findings" aria-labelledby="findings-title"></ol>
+    <div class="empty" id="aw-empty" hidden><p id="aw-empty-text"></p><button type="button" class="btn" id="aw-empty-reset">Clear filters</button></div>
+  </section>
+  <section class="section" aria-labelledby="rules-title">
+    <div class="section-head"><h2 id="rules-title">Rules evaluated</h2></div>
+    <p class="coverage" id="aw-coverage"></p>
+    <div class="table-wrap" id="aw-rules-wrap">
+      <table class="rules-table">
+        <caption class="sr-only">Rules evaluated for the detected harnesses, with their result</caption>
+        <thead><tr><th scope="col">Rule</th><th scope="col">Title</th><th scope="col">Category</th><th scope="col">Harness</th><th scope="col">Severity</th><th scope="col">Confidence</th><th scope="col">Result</th></tr></thead>
+        <tbody id="aw-rules"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<footer class="footer">
+  <p>Generated offline by Airworthy. It reads configuration files only: no agent, MCP server or hook was run, and this page loads nothing from the network.</p>
+  <p>Confidence "medium" marks a rule whose documented behavior is only partly confirmed. Read its description before you act on it.</p>
+</footer>
+</div>
+<script type="application/json" id="aw-data">{"tool":{"name":"Airworthy","version":"0.1.0"},"scannedAt":"2026-10-18T23\u003a40\u003a43Z","root":"hardened","harnesses":["vscode-copilot","claude-code","mcp"],"score":{"score":98,"grade":"A"},"counts":{"critical":0,"high":0,"medium":1,"low":0,"info":0},"categories":[{"id":"approvals","title":"Approvals and terminal","score":100,"applicable":true,"findings":0,"weight":25},{"id":"sandbox-network","title":"Sandbox and network","score":100,"applicable":true,"findings":0,"weight":20},{"id":"mcp-supply-chain","title":"MCP and supply chain","score":92,"applicable":true,"findings":1,"weight":20},{"id":"agent-files","title":"Agent files and instructions","score":100,"applicable":true,"findings":0,"weight":15},{"id":"secrets","title":"Secrets","score":100,"applicable":true,"findings":0,"weight":15},{"id":"observability","title":"Audit and observability","score":100,"applicable":true,"findings":0,"weight":5}],"findings":[{"ruleId":"AW-VSC-027","title":"Repository hook file runs in the Local harness","severity":"medium","category":"mcp-supply-chain","harness":"vscode-copilot","description":"chat.useHooks = true (default) makes the Local harness run the commands of workspace hook files (.github/hooks/*.json, and .claude/settings*.json when chat.useClaudeHooks is on) with your rights. Hooks are executable code\u003a a repository can plant one that runs on agent events as soon as the folder is trusted, a supply-chain risk. Severity is high when Workspace Trust is disabled.","evidence":"chat.useHooks = true; workspace hook file .github\\hooks\\policy.json runs commands on\u003a preToolUse (1)","path":".github\\hooks\\policy.json","line":3,"key":"hooks","fix":"Review every hook file and the scripts it calls, protect them with CODEOWNERS and \"**/.github/hooks/**\"\u003a false in chat.tools.edits.autoApprove, or set \"chat.useHooks\"\u003a false where repository hooks are not needed.","references":["OWASP-ASI04","OWASP-ASI05","https\u003a//code.visualstudio.com/docs/copilot/customization/hooks","https\u003a//docs.github.com/en/copilot/reference/hooks-reference","https\u003a//code.visualstudio.com/docs/copilot/reference/copilot-settings"],"confidence":"high"}],"rules":[{"id":"AW-AGT-001","title":"Custom agent enables every tool (tools\u003a \u0027*\u0027)","severity":"high","category":"agent-files","harness":"generic","confidence":"high"},{"id":"AW-AGT-002","title":"Custom agent enables every tool of an MCP server (\u0027\u003cserver\u003e/*\u0027)","severity":"medium","category":"agent-files","harness":"generic","confidence":"high"},{"id":"AW-AGT-003","title":"Custom agent without a tools list (all tools enabled)","severity":"medium","category":"agent-files","harness":"generic","confidence":"medium"},{"id":"AW-AGT-004","title":"Custom agent can call any agent as a subagent (agents\u003a \u0027*\u0027)","severity":"medium","category":"agent-files","harness":"vscode-copilot","confidence":"high"},{"id":"AW-AGT-005","title":"Handoff submits its prompt automatically (send\u003a true)","severity":"medium","category":"agent-files","harness":"vscode-copilot","confidence":"high"},{"id":"AW-AGT-006","title":"Prompt file grants tools beyond its agent\u0027s list","severity":"medium","category":"agent-files","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-AGT-007","title":"Instructions tell the agent not to ask for approval","severity":"medium","category":"agent-files","harness":"generic","confidence":"medium"},{"id":"AW-AGT-008","title":"Hidden instruction in an HTML comment","severity":"high","category":"agent-files","harness":"generic","confidence":"medium"},{"id":"AW-AGT-009","title":"Invisible or bidirectional control characters in an agent file","severity":"high","category":"agent-files","harness":"generic","confidence":"high"},{"id":"AW-AGT-010","title":"Unicode tag characters hide text in an agent file","severity":"high","category":"agent-files","harness":"generic","confidence":"high"},{"id":"AW-AGT-011","title":"Instructions point to private or internal URLs","severity":"low","category":"agent-files","harness":"generic","confidence":"high"},{"id":"AW-AGT-012","title":"Custom agent model not pinned","severity":"info","category":"agent-files","harness":"generic","confidence":"high"},{"id":"AW-AGT-013","title":"Agent frontmatter hooks run only in the Local harness","severity":"info","category":"agent-files","harness":"vscode-copilot","confidence":"high"},{"id":"AW-CC-001","title":"Claude Code starts in bypassPermissions mode","severity":"critical","category":"approvals","harness":"claude-code","confidence":"high"},{"id":"AW-CC-002","title":"Claude Code starts in a mode that auto-approves actions","severity":"medium","category":"approvals","harness":"claude-code","confidence":"high"},{"id":"AW-CC-003","title":"Every shell command is pre-approved","severity":"critical","category":"approvals","harness":"claude-code","confidence":"high"},{"id":"AW-CC-004","title":"Web fetches to any domain are pre-approved","severity":"medium","category":"sandbox-network","harness":"claude-code","confidence":"high"},{"id":"AW-CC-005","title":"No deny rule protects secret files","severity":"low","category":"secrets","harness":"claude-code","confidence":"high"},{"id":"AW-CC-006","title":"Every project MCP server is approved automatically","severity":"high","category":"mcp-supply-chain","harness":"claude-code","confidence":"high"},{"id":"AW-CC-007","title":"Project settings run commands (hooks or helpers)","severity":"medium","category":"mcp-supply-chain","harness":"claude-code","confidence":"high"},{"id":"AW-CC-008","title":"Project settings disable or weaken the sandbox","severity":"medium","category":"sandbox-network","harness":"claude-code","confidence":"high"},{"id":"AW-CC-009","title":"Sandboxed commands can still run outside the sandbox","severity":"low","category":"sandbox-network","harness":"claude-code","confidence":"high"},{"id":"AW-CC-010","title":"bypassPermissions mode is not disabled","severity":"info","category":"approvals","harness":"claude-code","confidence":"high"},{"id":"AW-MCP-001","title":"MCP server launched without a pinned version","severity":"high","category":"mcp-supply-chain","harness":"mcp","confidence":"high"},{"id":"AW-MCP-002","title":"Hardcoded secret in an MCP server configuration","severity":"critical","category":"secrets","harness":"mcp","confidence":"high"},{"id":"AW-MCP-003","title":"Remote MCP server reached over cleartext HTTP","severity":"high","category":"sandbox-network","harness":"mcp","confidence":"high"},{"id":"AW-MCP-004","title":"MCP server runs inline shell or interpreter code","severity":"medium","category":"mcp-supply-chain","harness":"mcp","confidence":"medium"},{"id":"AW-MCP-005","title":"MCP server container breaks out of its isolation","severity":"high","category":"sandbox-network","harness":"mcp","confidence":"high"},{"id":"AW-MCP-006","title":"Large number of MCP servers","severity":"info","category":"mcp-supply-chain","harness":"mcp","confidence":"medium"},{"id":"AW-SEC-001","title":"GitHub token in a configuration file","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-002","title":"AWS access key ID in a configuration file","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-003","title":"Azure Storage account key in a connection string","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-004","title":"OpenAI-style API key in a configuration file","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-005","title":"Anthropic API key in a configuration file","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-006","title":"Slack token in a configuration file","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-007","title":"Private key in a configuration file","severity":"high","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-008","title":"JSON Web Token in a configuration file","severity":"medium","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-SEC-009","title":"Hard-coded password, secret or token value","severity":"medium","category":"secrets","harness":"generic","confidence":"medium"},{"id":"AW-SEC-010","title":"Environment file in the workspace","severity":"low","category":"secrets","harness":"generic","confidence":"high"},{"id":"AW-VSC-001","title":"Global auto-approval of tools enabled","severity":"critical","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-002","title":"Default permission level skips approvals","severity":"high","category":"approvals","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-003","title":"Terminal command auto-approval enabled","severity":"high","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-004","title":"Catch-all or broad terminal allow rule","severity":"critical","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-005","title":"Risky command auto-approved in the terminal","severity":"high","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-006","title":"Windows exfiltration commands lack approval-required rules","severity":"medium","category":"approvals","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-007","title":"Built-in terminal approval rules ignored","severity":"high","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-008","title":"Terminal prompts answered automatically","severity":"medium","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-009","title":"Edit auto-approval covers agent control files","severity":"high","category":"approvals","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-010","title":"Wildcard URL auto-approval","severity":"high","category":"sandbox-network","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-011","title":"Terminal risk assessment disabled","severity":"low","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-012","title":"Agent sandbox disabled","severity":"high","category":"sandbox-network","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-013","title":"Unrestricted network egress","severity":"medium","category":"sandbox-network","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-014","title":"Commands may leave the sandbox","severity":"medium","category":"sandbox-network","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-015","title":"Sandbox grants developer-tool access","severity":"medium","category":"sandbox-network","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-016","title":"Credentials injected into the sandbox","severity":"medium","category":"sandbox-network","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-017","title":"Credential folders not denied in the sandbox","severity":"medium","category":"sandbox-network","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-018","title":"Sandboxed commands auto-approved with open network","severity":"high","category":"sandbox-network","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-019","title":"Read access outside the workspace","severity":"medium","category":"sandbox-network","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-020","title":"High agent request limit","severity":"low","category":"approvals","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-021","title":"MCP server discovery from other applications","severity":"medium","category":"mcp-supply-chain","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-022","title":"MCP servers start automatically","severity":"low","category":"mcp-supply-chain","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-023","title":"MCP server pre-authorized for sampling","severity":"medium","category":"mcp-supply-chain","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-024","title":"Agent OpenTelemetry disabled","severity":"low","category":"observability","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-025","title":"Prompt content captured in telemetry","severity":"medium","category":"secrets","harness":"vscode-copilot","confidence":"high"},{"id":"AW-VSC-026","title":"Workspace Trust disabled","severity":"high","category":"mcp-supply-chain","harness":"vscode-copilot","confidence":"medium"},{"id":"AW-VSC-027","title":"Repository hook file runs in the Local harness","severity":"medium","category":"mcp-supply-chain","harness":"vscode-copilot","confidence":"high"}],"errors":[],"options":{"minSeverity":"info","failOn":null,"redact":true,"exitCode":0}}</script>
+</body>
+</html>

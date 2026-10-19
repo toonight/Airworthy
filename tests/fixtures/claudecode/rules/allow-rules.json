@@ -1,0 +1,17 @@
+// Synthetic AW-CC-003 cases: permission rule texts only (tool names, program names, flags and wildcards).
+{
+  "critical": ["Bash", "Bash(*)", "Bash(:*)", "Bash( * )", "PowerShell", "PowerShell(*)"],
+  "high": [
+    "Bash(python *)", "Bash(python3:*)", "Bash(/usr/bin/python3.12 *)", "Bash(bash *)", "Bash(bash -c *)",
+    "Bash(sudo bash *)", "Bash(npx *)", "Bash(node*)", "Bash(docker run *)", "Bash(docker run -i --rm *)",
+    "Bash(* --help)", "PowerShell(Invoke-Expression *)", "PowerShell(iex *)", "PowerShell(pwsh *)",
+    "PowerShell(pwsh.exe -Command *)", "PowerShell(Start-Process *)"
+  ],
+  "silent": [
+    "Bash(npm run test *)", "Bash(git status)", "Bash(git log *)", "Bash(python -m pytest *)",
+    "Bash(docker run --rm example/image:1.0.0 *)", "Bash(nodemon)", "Bash(npm exec)", "Read", "Edit(./src/**)",
+    "bash(*)", "mcp__*", "*", "PowerShell(Get-ChildItem *)"
+  ],
+  "excludedBroad": ["*", "python *", "bash -c *", "sudo sh *"],
+  "excludedNarrow": ["docker *", "docker compose *", "git *"]
+}

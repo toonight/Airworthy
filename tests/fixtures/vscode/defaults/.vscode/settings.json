@@ -1,0 +1,4 @@
+// Synthetic fixture for Airworthy tests: no Copilot setting, so every documented default applies.
+{
+  "editor.tabSize": 2
+}

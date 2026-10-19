@@ -1,0 +1,26 @@
+{
+  "_comment": "Benign test values for tests/Security.Tests.ps1. Characters that must never appear raw in the HTML data block are JSON escapes, so the test script holds none. executionApis are bare API names that no source file may use (the scanner never runs or evaluates scanned content and makes no network call); they are tokens, not code.",
+  "markers": [
+    "AW-XSS-MARKER-TERMKEY", "AW-XSS-MARKER-REGEX", "AW-XSS-MARKER-URL", "AW-XSS-MARKER-FOLDER",
+    "AW-XSS-MARKER-MCPNAME", "AW-XSS-MARKER-HTTP", "AW-XSS-MARKER-JSNAME", "AW-XSS-MARKER-CLAUDEMCP",
+    "AW-XSS-MARKER-TOOL", "AW-XSS-MARKER-HANDOFF", "AW-XSS-MARKER-COMMENT", "AW-XSS-MARKER-BYPASS",
+    "AW-XSS-MARKER-CLAUDEMD", "AW-XSS-MARKER-ALLOW", "AW-XSS-MARKER-HOOK", "AW-XSS-MARKER-CLIHOOK",
+    "AW-XSS-MARKER-HOOKEVENT"
+  ],
+  "lineSeparator": "\u2028",
+  "rawInData": ["\u003c", "\u003e", "\u0026", "\u0027", "\u2028", "\u2029", "javascript:", "\u003c/", "\u003c!--"],
+  "hostileSecrets": ["ghp_FAKEhostile0123456789abcdefFAKE012345", "ghp_FAKEhostile9876543210fedcbaFAKE987654"],
+  "execMarkerPrefix": "AW-EXEC-MARKER",
+  "executionApis": [
+    "Invoke-Expression", "iex", "Invoke-Command", "Invoke-Item", "Start-Job", "Start-Process", "ExpandString",
+    "InvokeScript", "NewScriptBlock", "scriptblock]::Create", "Add-Type", "ComObject", "WebClient", "WebRequest",
+    "HttpClient", "Invoke-WebRequest", "Invoke-RestMethod", "DownloadString", "DownloadFile", "Start-BitsTransfer",
+    "Net.Sockets", "Dns]::", "Test-Connection", "Test-NetConnection", "Resolve-DnsName"
+  ],
+  "linkTargets": {
+    "networkShare": "UNC\\aw-server.invalid\\share\\folder",
+    "volume": "Volume{00000000-0000-0000-0000-000000000000}\\folder",
+    "rootedShare": "\\\\aw-server.invalid\\share",
+    "deviceShare": "\\??\\UNC\\aw-server.invalid\\share"
+  }
+}

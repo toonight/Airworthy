@@ -1,0 +1,92 @@
+# Continuous integration for Airworthy.
+#
+# Hardening:
+# - the GITHUB_TOKEN is read-only (contents: read), and checkout does not leave it in .git/config;
+# - actions are pinned to a full commit SHA (Dependabot proposes the updates);
+# - no secrets, and no pull_request_target: code from a fork runs without any write access;
+# - run: scripts contain no ${{ }} expression, so no event data (branch names, titles...)
+#   can be injected into them; the matrix value reaches them through an environment variable.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded runs of a pull request, but let every run on main finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Tests (${{ matrix.shell }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # powershell is Windows PowerShell 5.1, the reference target; pwsh is PowerShell 7.
+        shell: [powershell, pwsh]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      AW_SHELL: ${{ matrix.shell }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show the PowerShell version
+        run: $PSVersionTable | Format-Table -AutoSize | Out-String -Width 200
+
+      - name: Run the test suite
+        # A new process with -NoProfile, exactly as documented for local runs. The exit code of
+        # Run-Tests.ps1 decides; a line written to stderr (the exit-code tests print some) does not.
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & $env:AW_SHELL -NoProfile -File ./tests/Run-Tests.ps1
+          exit $LASTEXITCODE
+
+  self-check:
+    name: Self-check on the fixtures
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The hardened fixture passes -FailOn high
+        run: |
+          $ErrorActionPreference = 'Continue'
+          powershell -NoProfile -File ./airworthy.ps1 -Path ./tests/fixtures/hardened -NoUserProfile -FailOn high
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Write-Output "::error::Expected exit code 0 on tests/fixtures/hardened, got $code."
+            exit 1
+          }
+          exit 0
+
+      - name: The insecure fixture fails -FailOn high
+        # Exit code 1 means findings at or above -FailOn. 0 would mean the gate is broken,
+        # and 2 that the analysis could not run: both fail this step.
+        run: |
+          $ErrorActionPreference = 'Continue'
+          powershell -NoProfile -File ./airworthy.ps1 -Path ./tests/fixtures/insecure -NoUserProfile -FailOn high
+          $code = $LASTEXITCODE
+          if ($code -ne 1) {
+            Write-Output "::error::Expected exit code 1 on tests/fixtures/insecure, got $code."
+            exit 1
+          }
+          Write-Output 'Exit code 1, as expected: -FailOn high blocks the insecure fixture.'
+          exit 0

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="aw-title aw-desc" font-family="Segoe UI, Inter, Helvetica Neue, Arial, sans-serif">
+  <title id="aw-title">Airworthy: Is your AI agent safe to run?</title>
+  <desc id="aw-desc">Airworthy banner, dark theme. Tagline: Is your AI agent safe to run? Subtitle: Offline security scoring for AI agent harnesses &#183; Copilot custom agents &#183; Claude Code &#183; Copilot CLI &#183; MCP. A score gauge runs from red through amber to green, its needle points to 92 out of 100, and a grade A badge sits beside it. An AI agent node marked with a shield and a check mark is connected to a terminal node, a file node and an MCP node with two servers.</desc>
+  <style>
+    .aw-needle { transform: rotate(75.6deg); animation: aw-sweep 1.5s cubic-bezier(.3, 1.15, .5, 1) .3s both; }
+    .aw-readout { animation: aw-fade .6s ease-out 1.4s both; }
+    .aw-pulse { animation: aw-pulse 3.2s ease-out 1.9s infinite both; }
+    @keyframes aw-sweep { from { transform: rotate(-90deg); } to { transform: rotate(75.6deg); } }
+    @keyframes aw-fade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes aw-pulse { 0% { transform: scale(1); opacity: .6; } 75%, 100% { transform: scale(1.4); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+  <defs>
+    <linearGradient id="aw-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090f20"/>
+      <stop offset="1" stop-color="#101b38"/>
+    </linearGradient>
+    <radialGradient id="aw-glow-violet">
+      <stop offset="0" stop-color="#8b5cf6" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aw-glow-cyan">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aw-glow-emerald">
+      <stop offset="0" stop-color="#10b981" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="aw-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#94a3b8" stroke-opacity=".09" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="aw-grid-fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".25"/>
+      <stop offset=".45" stop-color="#ffffff" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="aw-grid-mask">
+      <rect width="1280" height="400" fill="url(#aw-grid-fade)"/>
+    </mask>
+    <clipPath id="aw-clip">
+      <rect width="1280" height="400" rx="24"/>
+    </clipPath>
+    <linearGradient id="aw-title-fill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c7d2fe"/>
+    </linearGradient>
+    <linearGradient id="aw-accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="aw-arc" x1="850" y1="0" x2="1086" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f43f5e"/>
+      <stop offset=".28" stop-color="#fb923c"/>
+      <stop offset=".5" stop-color="#fbbf24"/>
+      <stop offset=".74" stop-color="#a3e635"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="aw-agent-ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="aw-badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background: navy panel, faint grid, soft glows, circuit traces -->
+  <g clip-path="url(#aw-clip)">
+    <rect width="1280" height="400" fill="url(#aw-bg)"/>
+    <rect width="1280" height="400" fill="url(#aw-grid)" mask="url(#aw-grid-mask)"/>
+    <circle cx="240" cy="90" r="380" fill="url(#aw-glow-violet)"/>
+    <circle cx="968" cy="240" r="320" fill="url(#aw-glow-cyan)"/>
+    <g fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M0 340H88L116 368H252" stroke="#22d3ee" stroke-opacity=".24"/>
+      <path d="M0 366H52L68 382H176" stroke="#a78bfa" stroke-opacity=".2"/>
+      <path d="M1280 44H1196L1168 72H1052" stroke="#a78bfa" stroke-opacity=".22"/>
+      <path d="M1280 100H1244L1228 116H1196" stroke="#22d3ee" stroke-opacity=".2"/>
+    </g>
+    <g fill="#0b1326" stroke-width="1.5">
+      <circle cx="252" cy="368" r="3.5" stroke="#22d3ee" stroke-opacity=".45"/>
+      <circle cx="176" cy="382" r="3.5" stroke="#a78bfa" stroke-opacity=".4"/>
+      <circle cx="1052" cy="72" r="3.5" stroke="#a78bfa" stroke-opacity=".45"/>
+      <circle cx="1196" cy="116" r="3.5" stroke="#22d3ee" stroke-opacity=".4"/>
+    </g>
+  </g>
+  <rect x=".75" y=".75" width="1278.5" height="398.5" rx="23.5" fill="none" stroke="#1e2a48" stroke-width="1.5"/>
+
+  <!-- Text -->
+  <text x="78" y="156" font-size="92" font-weight="700" letter-spacing="-1.5" fill="url(#aw-title-fill)">Airworthy</text>
+  <text x="82" y="212" font-size="32" font-weight="600" fill="#cbd5e1">Is your AI agent <tspan fill="#34d399">safe to run?</tspan></text>
+  <rect x="83" y="236" width="112" height="4" rx="2" fill="url(#aw-accent)"/>
+  <text font-size="18" fill="#94a3b8">
+    <tspan x="82" y="278">Offline security scoring for AI agent harnesses</tspan>
+    <tspan x="82" y="306" fill="#cbd5e1">Copilot custom agents<tspan fill="#a78bfa"> &#183; </tspan>Claude Code<tspan fill="#a78bfa"> &#183; </tspan>Copilot CLI<tspan fill="#a78bfa"> &#183; </tspan>MCP</tspan>
+  </text>
+
+  <!-- Node graph: an agent connected to a terminal, a file and an MCP node -->
+  <g fill="none" stroke="#3d4c70" stroke-width="1.5" stroke-dasharray="4 5" stroke-linecap="round">
+    <path d="M728 198L652 98"/>
+    <path d="M728 198L800 96"/>
+    <path d="M728 198L690 318"/>
+    <path d="M690 318L628 368"/>
+    <path d="M690 318L756 370"/>
+  </g>
+  <rect x="630" y="80" width="44" height="36" rx="9" fill="#0f1a33" stroke="#22d3ee" stroke-width="1.8"/>
+  <path d="M641 92L647 98L641 104M651 104H661" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M788 76H806L816 86V112Q816 116 812 116H788Q784 116 784 112V80Q784 76 788 76Z" fill="#0f1a33" stroke="#fbbf24" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M806 76V86H816M791 96H809M791 103H809M791 110H802" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="658" y="304" width="64" height="28" rx="14" fill="#0f1a33" stroke="#a78bfa" stroke-width="1.8"/>
+  <text x="690" y="323" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="1" fill="#c4b5fd">MCP</text>
+  <g fill="#0f1a33" stroke="#a78bfa" stroke-width="1.5">
+    <circle cx="628" cy="368" r="7"/>
+    <circle cx="756" cy="370" r="7"/>
+  </g>
+  <g fill="#a78bfa">
+    <circle cx="628" cy="368" r="2.5"/>
+    <circle cx="756" cy="370" r="2.5"/>
+  </g>
+  <g transform="translate(728 198)">
+    <circle r="50" fill="url(#aw-glow-violet)"/>
+    <circle r="34" fill="#0f1a33" stroke="url(#aw-agent-ring)" stroke-width="2.5"/>
+    <path d="M0 -19L15 -13V-1C15 9 8.5 16 0 20C-8.5 16 -15 9 -15 -1V-13Z" fill="#34d399" fill-opacity=".14" stroke="#34d399" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M-6.5 0L-1.5 5L7 -4.5" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Score gauge: 0 to 100 over a half circle, needle at 92 -->
+  <path d="M850 262A118 118 0 0 1 1086 262" fill="none" stroke="#16213d" stroke-width="32" stroke-linecap="round"/>
+  <path d="M850 262A118 118 0 0 1 1086 262" fill="none" stroke="url(#aw-arc)" stroke-width="20" stroke-linecap="round"/>
+  <g fill="none" stroke="#4b5b80" stroke-width="2" stroke-linecap="round">
+    <path d="M968 166V178" transform="rotate(-90 968 262)"/>
+    <path d="M968 166V172" transform="rotate(-72 968 262)"/>
+    <path d="M968 166V172" transform="rotate(-54 968 262)"/>
+    <path d="M968 166V172" transform="rotate(-36 968 262)"/>
+    <path d="M968 166V172" transform="rotate(-18 968 262)"/>
+    <path d="M968 166V178"/>
+    <path d="M968 166V172" transform="rotate(18 968 262)"/>
+    <path d="M968 166V172" transform="rotate(36 968 262)"/>
+    <path d="M968 166V172" transform="rotate(54 968 262)"/>
+    <path d="M968 166V172" transform="rotate(72 968 262)"/>
+    <path d="M968 166V178" transform="rotate(90 968 262)"/>
+  </g>
+  <g font-size="14" fill="#64748b" text-anchor="middle">
+    <text x="850" y="300">0</text>
+    <text x="1086" y="300">100</text>
+  </g>
+  <g transform="translate(968 262)">
+    <g class="aw-needle" transform="rotate(75.6)">
+      <path d="M-1.8 -100H1.8L6.5 0L4 16H-4L-6.5 0Z" fill="#f1f5f9"/>
+    </g>
+    <circle r="13" fill="#0b1326" stroke="#e2e8f0" stroke-width="3"/>
+    <circle r="4.5" fill="#22d3ee"/>
+  </g>
+  <text class="aw-readout" x="968" y="332" text-anchor="middle" font-size="40" font-weight="700" fill="#f8fafc">92<tspan dx="3" font-size="18" font-weight="500" fill="#64748b">/100</tspan></text>
+
+  <!-- Grade badge -->
+  <g transform="translate(1176 206)">
+    <circle r="66" fill="url(#aw-glow-emerald)"/>
+    <rect class="aw-pulse" x="-42" y="-42" width="84" height="84" rx="24" fill="none" stroke="#34d399" stroke-width="3" opacity=".35"/>
+    <rect x="-42" y="-42" width="84" height="84" rx="24" fill="url(#aw-badge)"/>
+    <rect x="-36" y="-36" width="72" height="72" rx="19" fill="none" stroke="#ffffff" stroke-opacity=".25" stroke-width="1.5"/>
+    <text y="17" text-anchor="middle" font-size="50" font-weight="700" fill="#ffffff">A</text>
+  </g>
+  <text x="1176" y="280" text-anchor="middle" font-size="13" font-weight="600" letter-spacing="3" fill="#94a3b8">GRADE</text>
+</svg>

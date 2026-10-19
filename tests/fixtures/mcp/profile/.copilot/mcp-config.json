@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "cli-tool": { "type": "local", "command": "uvx", "args": ["example-cli-tool"] }
+  }
+}

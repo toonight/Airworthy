@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "windows-wrapper": { "command": "cmd", "args": ["/c", "npx", "-y", "@example/mcp-server-git@3.0.1"] },
+    "remote": { "type": "http", "url": "https://mcp.example.invalid/mcp", "headers": { "Authorization": "Bearer ${EXAMPLE_TOKEN}" } },
+    "script": { "command": "python", "args": ["-m", "example_server", "--config", "./config/server.toml"] }
+  }
+}

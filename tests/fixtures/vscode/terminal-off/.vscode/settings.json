@@ -1,0 +1,9 @@
+// Synthetic fixture for Airworthy tests: terminal auto-approval disabled, so allow rules are inert.
+{
+  "chat.tools.terminal.enableAutoApprove": false,
+  "chat.tools.terminal.ignoreDefaultAutoApproveRules": true,
+  "chat.tools.terminal.autoApprove": {
+    "/.*/": true,
+    "npx": true
+  }
+}

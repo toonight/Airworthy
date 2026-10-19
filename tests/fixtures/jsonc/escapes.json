@@ -1,0 +1,6 @@
+{
+  "_comment": "Synthetic JSON escapes for tests/Jsonc.Tests.ps1. They live in this data file, written with backslash-u escapes, so that the test script stays ASCII and never builds a character from its code (CONTRIBUTING.md, Antivirus hygiene).",
+  "escapes": { "e": "caf\u00e9", "emoji": "\ud83d\uDE00", "nul": "a\u0000b" },
+  "keyEscape": { "a\u0062": 1 },
+  "raw": { "key": "k\u00e9", "value": "\u4e2d\u6587 \u00e0" }
+}

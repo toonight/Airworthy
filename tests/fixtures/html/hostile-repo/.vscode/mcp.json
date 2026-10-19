@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "</script><i>AW-XSS-MARKER</i><!--\u2028": {
+      "command": "npx",
+      "args": ["-y", "aw-marker-pkg@latest"]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+// Synthetic fixture for Airworthy tests: sandbox on, egress limited to one domain, one denied path.
+{
+  "chat.agent.sandbox.enabled": "on",
+  "chat.agent.sandbox.network.allowedDomains": ["api.github.com"],
+  "chat.agent.sandbox.allowAutoApprove": true,
+  "chat.agent.sandbox.fileSystem.allowDevToolAccess": false,
+  "chat.agent.sandbox.fileSystem.userConfiguredPaths": {
+    "deniedPaths": ["~/.ssh"]
+  },
+  "github.copilot.chat.additionalReadAccessFolders": ["../shared-docs"]
+}

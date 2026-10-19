@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      { "type": "command", "bash": "./scripts/format.sh", "powershell": "./scripts/format.ps1" }
+    ]
+  }
+}

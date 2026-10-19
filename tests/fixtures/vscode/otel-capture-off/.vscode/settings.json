@@ -1,0 +1,6 @@
+// Synthetic fixture for Airworthy tests: captureContent is set, but OpenTelemetry itself is off.
+{
+  "github.copilot.chat.otel.enabled": false,
+  "github.copilot.chat.otel.captureContent": true,
+  "github.copilot.chat.otel.otlpEndpoint": "https://collector.example.invalid:4318"
+}

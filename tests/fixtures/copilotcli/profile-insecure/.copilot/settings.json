@@ -1,0 +1,6 @@
+// Synthetic Copilot CLI user settings (JSONC).
+{
+  "allowedUrls": ["docs.github.com", "*", "*.com"],
+  "storeTokenPlaintext": true,
+  "model": "auto"
+}

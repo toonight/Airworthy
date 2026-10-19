@@ -1,0 +1,17 @@
+// Synthetic INSECURE fixture. The token below is FAKE.
+{
+  "servers": {
+    "fetch-anything": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server-fetch@latest"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE1234"
+      }
+    },
+    "remote-tools": {
+      "type": "http",
+      "url": "http://mcp.example.invalid/mcp"
+    }
+  }
+}

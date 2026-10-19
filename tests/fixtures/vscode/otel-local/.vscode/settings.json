@@ -1,0 +1,6 @@
+// Synthetic fixture for Airworthy tests: content capture to a local collector.
+{
+  "github.copilot.chat.otel.enabled": true,
+  "github.copilot.chat.otel.captureContent": true,
+  "github.copilot.chat.otel.otlpEndpoint": "http://127.0.0.1:4318"
+}

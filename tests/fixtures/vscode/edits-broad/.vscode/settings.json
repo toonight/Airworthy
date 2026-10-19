@@ -1,0 +1,15 @@
+// Synthetic fixture for Airworthy tests: a broad edit pattern with every control file protected.
+{
+  "chat.tools.edits.autoApprove": {
+    "**": true,
+    "**/.vscode/**": false,
+    "**/*.agent.md": false,
+    "**/.github/**": false,
+    "**/.git/**": false,
+    "**/.mcp.json": false,
+    "**/.env*": false,
+    "**/.claude/**": false,
+    "AGENTS.md": false,
+    "CLAUDE.md": false
+  }
+}

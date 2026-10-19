@@ -1,0 +1,5 @@
+{
+  "servers": {
+    "docs": { "type": "stdio", "command": "node", "args": ["./tools/docs-server.js"] }
+  }
+}

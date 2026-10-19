@@ -1,0 +1,14 @@
+// Synthetic fixture for Airworthy tests: hardened read access, MCP, telemetry, trust and hook settings.
+{
+  "github.copilot.chat.additionalReadAccessFolders": [],
+  "chat.agent.maxRequests": 100,
+  "chat.mcp.discovery.enabled": false,
+  "chat.mcp.autostart": "never",
+  "chat.mcp.serverSampling": {},
+  "chat.agent.networkFilter": true,
+  "chat.agent.allowedNetworkDomains": ["registry.npmjs.org"],
+  "github.copilot.chat.otel.enabled": true,
+  "github.copilot.chat.otel.captureContent": false,
+  "security.workspace.trust.enabled": true,
+  "chat.useHooks": false
+}

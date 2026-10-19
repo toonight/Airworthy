@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "git-tools": {
+      "command": "uvx",
+      "args": ["example-mcp-server-git"]
+    },
+    "shell": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-shell"]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "inputs": [
+    { "type": "promptString", "id": "api-key", "description": "API key", "password": true }
+  ],
+  "servers": {
+    "pinned-docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "@example/mcp-server-docs@1.4.2"],
+      "env": { "API_KEY": "${input:api-key}" }
+    },
+    "unpinned-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server-search"]
+    },
+    "remote-https": {
+      "type": "http",
+      "url": "https://mcp.example.invalid/mcp"
+    }
+  }
+}

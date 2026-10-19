@@ -1,0 +1,4 @@
+// Synthetic fixture for Airworthy tests: URL auto-approval in the documented array form.
+{
+  "chat.tools.urls.autoApprove": ["*", "https://api.example.com/v1/status"]
+}

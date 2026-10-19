@@ -1,0 +1,10 @@
+// Synthetic FAKE user profile: VS Code user settings with risky values.
+{
+  "editor.fontSize": 14,
+  "chat.tools.global.autoApprove": true,
+  "chat.tools.terminal.autoApprove": {
+    "/.*/": true
+  },
+  "chat.agent.maxRequests": 200,
+  "chat.agent.sandbox.network.allowNetwork": true
+}

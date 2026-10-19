@@ -1,0 +1,22 @@
+# Store text files with LF line endings in the repository.
+* text=auto
+
+# PowerShell sources: CRLF in the working tree, the native line ending of Windows PowerShell 5.1.
+# (One pattern per line: gitattributes does not accept several patterns on the same line.)
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+
+# Data, documents, report assets and generated reports: LF everywhere.
+*.md    text eol=lf
+*.json  text eol=lf
+*.svg   text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.yml   text eol=lf
+*.sarif text eol=lf
+
+# Test fixtures with other names (.env, .env.*, *.code-workspace) keep LF too, so the tests read
+# the same bytes on every machine and on CI, whatever core.autocrlf says.
+tests/fixtures/** eol=lf

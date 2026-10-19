@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="aw-logo-title aw-logo-desc">
+  <title id="aw-logo-title">Airworthy</title>
+  <desc id="aw-logo-desc">Airworthy logo: a shield that holds a score gauge. The gauge arc runs from red through amber to green and the needle points into the green zone.</desc>
+  <style>
+    .aw-needle { transform: rotate(75.6deg); animation: aw-sweep 1.5s cubic-bezier(.3, 1.15, .5, 1) .2s both; }
+    @keyframes aw-sweep { from { transform: rotate(-90deg); } to { transform: rotate(75.6deg); } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+  <defs>
+    <linearGradient id="aw-logo-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2c50"/>
+      <stop offset="1" stop-color="#0a1122"/>
+    </linearGradient>
+    <linearGradient id="aw-logo-edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="aw-logo-arc" x1="54" y1="0" x2="202" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f43f5e"/>
+      <stop offset=".28" stop-color="#fb923c"/>
+      <stop offset=".5" stop-color="#fbbf24"/>
+      <stop offset=".74" stop-color="#a3e635"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Shield -->
+  <path d="M128 18L212 46C217 47.7 220 52 220 57V118C220 178 183 218 128 240C73 218 36 178 36 118V57C36 52 39 47.7 44 46Z" fill="url(#aw-logo-fill)" stroke="url(#aw-logo-edge)" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M128 18L212 46C217 47.7 220 52 220 57V118C220 178 183 218 128 240C73 218 36 178 36 118V57C36 52 39 47.7 44 46Z" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="2.4" transform="translate(128 130) scale(.84) translate(-128 -130)"/>
+
+  <!-- Score gauge: 0 to 100 over a half circle, needle at 92 -->
+  <path d="M66 156A62 62 0 0 1 190 156" fill="none" stroke="#070d1c" stroke-width="34" stroke-linecap="round"/>
+  <path d="M66 156A62 62 0 0 1 190 156" fill="none" stroke="url(#aw-logo-arc)" stroke-width="24" stroke-linecap="round"/>
+  <g transform="translate(128 156)">
+    <g class="aw-needle" transform="rotate(75.6)">
+      <path d="M-2.4 -70H2.4L8 0L5 10H-5L-8 0Z" fill="#f8fafc"/>
+    </g>
+    <circle r="14" fill="#f8fafc"/>
+    <circle r="5.5" fill="#0e7490"/>
+  </g>
+</svg>

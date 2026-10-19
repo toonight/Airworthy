@@ -1,0 +1,8 @@
+{
+  "model": "auto",
+  "hooks": {
+    "preToolUse": [
+      { "type": "command", "bash": "./scripts/check-tool.sh", "powershell": "./scripts/check-tool.ps1", "timeoutSec": 30 }
+    ]
+  }
+}

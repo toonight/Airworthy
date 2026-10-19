@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "./scripts/hooks/check-tool.sh",
+        "powershell": "./scripts/hooks/check-tool.ps1",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

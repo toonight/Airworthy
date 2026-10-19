@@ -1,0 +1,7 @@
+// Synthetic fixture for Airworthy tests: object forms of the MCP discovery and sampling settings.
+{
+  "chat.mcp.discovery.enabled": { "claude-desktop": true, "cursor": false },
+  "chat.mcp.serverSampling": {
+    "Workspace: docs": { "allowedModels": [] }
+  }
+}

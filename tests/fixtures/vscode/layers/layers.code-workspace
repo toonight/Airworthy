@@ -1,0 +1,10 @@
+{
+  "folders": [
+    { "path": "." }
+  ],
+  "settings": {
+    "chat.tools.urls.autoApprove": {
+      "https://*": true
+    }
+  }
+}

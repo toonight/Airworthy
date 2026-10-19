@@ -1,0 +1,8 @@
+{
+  "_comment": "Expected values for tests/VSCode.Tests.ps1. Command names live in this data file, not in the test script (CONTRIBUTING.md, Antivirus hygiene). Names and flags only: no URL, no payload.",
+  "approvalsRisky": {
+    "riskyAllowKeys": ["npx", "git push", "powershell", "iwr", "/^python3? -c\\b/", "node -e", "certutil", "bitsadmin", "curl.exe", "irm", "Invoke-WebRequest"],
+    "powershellLabel": "powershell (encoded command)",
+    "missingApproval": ["iwr", "certutil", "bitsadmin"]
+  }
+}

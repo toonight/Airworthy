@@ -1,0 +1,8 @@
+// Synthetic fixture for Airworthy tests: narrow edit auto-approval that avoids control files.
+{
+  "chat.tools.edits.autoApprove": {
+    "src/**": true,
+    "docs/*.txt": true,
+    "**/.vscode/**": false
+  }
+}

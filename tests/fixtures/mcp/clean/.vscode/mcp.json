@@ -1,0 +1,29 @@
+// Synthetic MCP fixture: every server is configured safely. No secret in the file.
+{
+  "inputs": [
+    { "type": "promptString", "id": "docs-token", "description": "Docs token", "password": true }
+  ],
+  "servers": {
+    "docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "@example/mcp-server-docs@1.4.2"],
+      "env": { "DOCS_TOKEN": "${input:docs-token}", "NODE_ENV": "production" }
+    },
+    "python-tool": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["example-mcp-tool==0.9.1"]
+    },
+    "container": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--network", "none", "-v", "${workspaceFolder}:/workspace:ro",
+               "ghcr.io/example/mcp-server@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"]
+    },
+    "local-dev": {
+      "type": "http",
+      "url": "http://localhost:8099/mcp"
+    }
+  }
+}

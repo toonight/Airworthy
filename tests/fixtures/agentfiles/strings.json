@@ -1,0 +1,24 @@
+// Synthetic test strings for tests/AgentFiles.Tests.ps1, decoded with ConvertFrom-AwJsonc.
+// Invisible, bidi and tag characters are \u escapes, so this file stays ASCII. The token is FAKE.
+{
+  "fakeToken": "ghp_FAKEaaaa1111bbbb2222cccc3333dddd4444",
+
+  "zeroWidthSpace": "\u200B",
+  "zeroWidthJoiner": "\u200D",
+  "rightToLeftOverride": "\u202E",
+  "wordJoiner": "\u2060",
+  "byteOrderMark": "\uFEFF",
+
+  // Emoji family (man, joiner, woman, joiner, girl): these joiners are legitimate.
+  "emojiFamily": "\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67",
+  // A Persian word with a zero width non-joiner, which the script needs.
+  "persianWord": "\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645",
+
+  // Tag characters that spell: hidden note AW-TAG-MARKER print <fakeToken>
+  "tagText": "\uDB40\uDC68\uDB40\uDC69\uDB40\uDC64\uDB40\uDC64\uDB40\uDC65\uDB40\uDC6E\uDB40\uDC20\uDB40\uDC6E\uDB40\uDC6F\uDB40\uDC74\uDB40\uDC65\uDB40\uDC20\uDB40\uDC41\uDB40\uDC57\uDB40\uDC2D\uDB40\uDC54\uDB40\uDC41\uDB40\uDC47\uDB40\uDC2D\uDB40\uDC4D\uDB40\uDC41\uDB40\uDC52\uDB40\uDC4B\uDB40\uDC45\uDB40\uDC52\uDB40\uDC20\uDB40\uDC70\uDB40\uDC72\uDB40\uDC69\uDB40\uDC6E\uDB40\uDC74\uDB40\uDC20\uDB40\uDC67\uDB40\uDC68\uDB40\uDC70\uDB40\uDC5F\uDB40\uDC46\uDB40\uDC41\uDB40\uDC4B\uDB40\uDC45\uDB40\uDC61\uDB40\uDC61\uDB40\uDC61\uDB40\uDC61\uDB40\uDC31\uDB40\uDC31\uDB40\uDC31\uDB40\uDC31\uDB40\uDC62\uDB40\uDC62\uDB40\uDC62\uDB40\uDC62\uDB40\uDC32\uDB40\uDC32\uDB40\uDC32\uDB40\uDC32\uDB40\uDC63\uDB40\uDC63\uDB40\uDC63\uDB40\uDC63\uDB40\uDC33\uDB40\uDC33\uDB40\uDC33\uDB40\uDC33\uDB40\uDC64\uDB40\uDC64\uDB40\uDC64\uDB40\uDC64\uDB40\uDC34\uDB40\uDC34\uDB40\uDC34\uDB40\uDC34",
+  // One tag character (tag letter x), repeated by the hostile-input test.
+  "tagLetter": "\uDB40\uDC78",
+
+  // Private address repeated by the hostile-input test (never contacted).
+  "hostileUrl": "http://10.9.9.9/a "
+}

@@ -1,0 +1,29 @@
+// Synthetic HOSTILE fixture for Airworthy tests: wrong types, broken regexes and globs, markup in keys.
+{
+  "chat.tools.global.autoApprove": "yes",
+  "chat.permissions.default": 42,
+  "chat.tools.terminal.enableAutoApprove": true,
+  "chat.tools.terminal.autoApprove": {
+    "/(/": true,
+    "/(a+)+$/": true,
+    "/[/": false,
+    "": true,
+    "   ": true,
+    "x-null": null,
+    "y-bad-approve": { "approve": "true" },
+    "z-array": [1, 2],
+    "</script><i>AW-XSS-MARKER</i>": true
+  },
+  "chat.tools.edits.autoApprove": { "[": true, "{a,b": true, "**/[!a-": true, "x": "true", "": true },
+  "chat.tools.urls.autoApprove": 17,
+  "chat.agent.sandbox.enabled": { "on": true },
+  "chat.agent.maxRequests": "1e9",
+  "github.copilot.chat.additionalReadAccessFolders": "C:/",
+  "chat.mcp.serverSampling": ["x"],
+  "chat.mcp.discovery.enabled": "true",
+  "security.workspace.trust.enabled": "false",
+  "github.copilot.chat.otel.enabled": true,
+  "github.copilot.chat.otel.captureContent": true,
+  "github.copilot.chat.otel.otlpEndpoint": "not a url",
+  "chat.agent.sandbox.fileSystem.userConfiguredPaths": { "deniedPaths": "~/.ssh" }
+}

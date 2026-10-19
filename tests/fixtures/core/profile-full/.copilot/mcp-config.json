@@ -1,0 +1,1 @@
+{ "mcpServers": { "cli-tool": { "type": "local", "command": "node", "args": ["cli.js"] } } }

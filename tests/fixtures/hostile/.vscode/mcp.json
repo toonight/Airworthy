@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "\u003c/script\u003e\u003cb\u003eAW-XSS-MARKER-MCPNAME\u003c/b\u003e\u2028": { "command": "npx", "args": ["-y", "aw-marker-package"] },
+    "cleartext-AW-XSS-MARKER-HTTP": { "type": "http", "url": "http://aw-xss-marker.invalid/\u003c/script\u003e\u003ci\u003eAW-XSS-MARKER-URLPATH" },
+    "javascript:void(0)AW-XSS-MARKER-JSNAME": { "command": "docker", "args": ["run", "--privileged", "aw-marker-image"] },
+    "exec-marker": { "command": "New-Item", "args": ["-ItemType", "File", "-Path", "AW-EXEC-MARKER-MCP.txt"] }
+  }
+}

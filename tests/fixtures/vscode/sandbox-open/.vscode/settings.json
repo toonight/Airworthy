@@ -1,0 +1,16 @@
+// Synthetic fixture for Airworthy tests: sandbox on, but with every opening left at its risky value.
+{
+  "chat.agent.sandbox.enabled": "on",
+  "chat.agent.sandbox.network.allowNetwork": true,
+  "chat.agent.sandbox.allowUnsandboxedCommands": true,
+  "chat.agent.sandbox.allowAutoApprove": true,
+  "chat.agent.sandbox.fileSystem.allowDevToolAccess": true,
+  "chat.agent.sandbox.credentials.authenticategh": true,
+  "chat.agent.sandbox.credentials.authenticategit": true,
+  "chat.agent.sandbox.fileSystem.userConfiguredPaths": {
+    "readwritePaths": [],
+    "readonlyPaths": [],
+    "deniedPaths": []
+  },
+  "chat.agent.networkFilter": false
+}

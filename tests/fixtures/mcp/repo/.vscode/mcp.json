@@ -1,0 +1,39 @@
+// Synthetic MCP fixture for the AW-MCP rules. Every secret below is FAKE.
+{
+  "inputs": [
+    { "type": "promptString", "id": "api-key", "description": "API key", "password": true }
+  ],
+  "servers": {
+    "unpinned": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/unpinned-server"]
+    },
+    "secret-env": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["server.js"],
+      "env": { "EXAMPLE_API_KEY": "FAKE-example-api-key-0001" }
+    },
+    "cleartext": {
+      "type": "http",
+      "url": "http://mcp.example.invalid/mcp"
+    },
+    "inline": {
+      "type": "stdio",
+      "command": "powershell",
+      "args": ["-NoProfile", "-Command", "PAYLOAD"]
+    },
+    "container": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--privileged", "-v", "/:/host", "ghcr.io/example/mcp-server:1.0.0"]
+    },
+    "safe": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/safe-server@2.3.4"],
+      "env": { "API_KEY": "${input:api-key}" }
+    }
+  }
+}

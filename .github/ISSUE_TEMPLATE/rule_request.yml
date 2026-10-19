@@ -1,0 +1,85 @@
+name: Rule request
+description: Propose a new rule, or a change to an existing rule.
+title: "[Rule]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Airworthy rules are static and offline: a rule reads configuration files and never runs an agent, an MCP server, a hook or a network call. A good rule request shows a risky configuration, a safe one, and the official documentation of the setting.
+
+        **Fake values only.** Never paste a real secret, token, internal host name, user name or private path.
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Harness
+      multiple: true
+      options:
+        - VS Code GitHub Copilot (custom agents, agent mode settings)
+        - Claude Code
+        - Copilot CLI
+        - MCP servers
+        - Secrets
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: existing-rule
+    attributes:
+      label: Existing rule ID
+      description: Only to change an existing rule.
+      placeholder: "AW-MCP-001"
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk
+      description: What can go wrong with this configuration, and who can exploit it?
+    validations:
+      required: true
+  - type: textarea
+    id: positive
+    attributes:
+      label: Risky configuration (the rule must report it)
+      description: A minimal synthetic example, with the file path relative to the analyzed folder.
+    validations:
+      required: true
+  - type: textarea
+    id: negative
+    attributes:
+      label: Safe configuration (the rule must not report it)
+      description: A close example that is fine, so that the rule has a negative test too.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Suggested severity
+      options:
+        - critical
+        - high
+        - medium
+        - low
+        - info
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested fix
+      description: What the user should change to make the configuration safe.
+  - type: textarea
+    id: references
+    attributes:
+      label: Official documentation
+      description: Links to the vendor documentation of the setting or behavior (and to OWASP guidance, if relevant). A rule whose behavior is not confirmed by the documentation gets medium confidence.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: The examples contain only synthetic, fake values.
+          required: true
+        - label: The risk can be detected from the files alone, without running anything or calling the network.
+          required: true

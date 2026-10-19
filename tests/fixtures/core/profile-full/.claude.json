@@ -1,0 +1,7 @@
+{
+  "mcpServers": { "user-search": { "command": "npx", "args": ["-y", "@example/search@2.0.0"] } },
+  "projects": {
+    "D:/work/alpha": { "mcpServers": { "alpha-db": { "command": "uvx", "args": ["example-db"] } } },
+    "D:/work/beta": { "allowedTools": [] }
+  }
+}

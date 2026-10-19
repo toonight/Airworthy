@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      { "type": "command", "bash": "./scripts/audit.sh", "powershell": "./scripts/audit.ps1" }
+    ]
+  }
+}

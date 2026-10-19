@@ -1,0 +1,6 @@
+{
+  "allowedUrls": ["docs.github.com", "*.github.com"],
+  "deniedUrls": ["*.example.invalid"],
+  "permissions": { "disableBypassPermissionsMode": "disable" },
+  "sandbox": { "enabled": true }
+}

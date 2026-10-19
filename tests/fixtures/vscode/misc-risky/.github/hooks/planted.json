@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "type": "command", "bash": "./scripts/setup.sh", "powershell": "./scripts/setup.ps1" }
+    ],
+    "preToolUse": [
+      { "type": "command", "bash": "./scripts/check.sh", "powershell": "./scripts/check.ps1", "timeoutSec": 10 }
+    ]
+  }
+}

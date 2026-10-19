@@ -1,0 +1,32 @@
+// Rule data for src/Rules/AgentFiles.ps1 (AW-AGT rules), read with ConvertFrom-AwJsonc.
+// Single words and flags only: no command lines, URLs or payloads (CONTRIBUTING.md, Antivirus hygiene).
+// Plain tokens are regex-escaped by the rules. Entries of the *Fr lists are regex fragments,
+// with accented letters written as \\xNN escapes so that this file stays ASCII.
+{
+  // Built-in VS Code agents that a prompt file can name (AW-AGT-006).
+  "builtInAgents": ["agent", "ask", "edit", "plan"],
+
+  // Command-line flags and permission modes that turn approvals off, when quoted in instructions (AW-AGT-007).
+  "approvalBypassFlags": ["--dangerously-skip-permissions", "--allow-all-tools", "--allow-all-paths", "--allow-all", "--yolo"],
+  "approvalBypassModes": ["bypassPermissions"],
+
+  // Verbs that open an imperative sentence in a hidden HTML comment (AW-AGT-008).
+  "imperativeVerbs": ["run", "execute", "exec", "delete", "erase", "wipe", "send", "upload", "exfiltrate", "post", "fetch",
+                      "download", "install", "push", "commit", "reveal", "leak", "print", "cat", "dump", "skip", "bypass",
+                      "disable", "approve", "ignore", "disregard", "forget"],
+  "imperativeVerbsFr": ["ex[e\\xE9]cute[rz]?", "lance[rz]?", "supprime[rz]?", "efface[rz]?", "envoie[rz]?",
+                        "t[e\\xE9]l[e\\xE9]charge[rz]?", "installe[rz]?", "pousse[rz]?", "r[e\\xE9]v[e\\xE8]le[rz]?",
+                        "affiche[rz]?", "oublie[rz]?", "contourne[rz]?", "d[e\\xE9]sactive[rz]?", "approuve[rz]?"],
+
+  // Network commands that a hidden comment may ask the agent to run (AW-AGT-008).
+  "networkCommands": ["curl", "wget", "iwr", "invoke-webrequest"],
+
+  // Verbs that, next to a word about secrets, ask to read or send them (AW-AGT-008).
+  "exfilVerbs": ["read", "send", "print", "cat", "copy", "upload", "post", "include", "output", "reveal", "leak",
+                 "exfiltrate", "fetch", "encode", "append", "embed"],
+  "exfilVerbsFr": ["lis", "lire", "envoie[rz]?", "affiche[rz]?", "copie[rz]?", "inclu(?:s|re|ez)", "r[e\\xE9]v[e\\xE8]le[rz]?"],
+
+  // Host name suffixes of internal networks (AW-AGT-011).
+  "internalHostSuffixes": [".local", ".internal", ".intranet", ".intra", ".corp", ".lan", ".home", ".home.arpa",
+                           ".localdomain", ".private", ".priv"]
+}

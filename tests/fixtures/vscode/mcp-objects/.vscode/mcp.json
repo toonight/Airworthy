@@ -1,0 +1,6 @@
+{
+  "servers": {
+    "docs": { "type": "stdio", "command": "node", "args": ["./tools/docs-server.js"] },
+    "search": { "type": "http", "url": "https://mcp.example.invalid/search" }
+  }
+}

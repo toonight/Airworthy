@@ -1,0 +1,9 @@
+// Synthetic fixture for Airworthy tests: edit auto-approval patterns that cover control files.
+{
+  "chat.tools.edits.autoApprove": {
+    "src/**": true,
+    "**/*.md": true,
+    ".github/workflows/**": true,
+    "**/.github/agents/**": false
+  }
+}

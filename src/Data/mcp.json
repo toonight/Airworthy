@@ -1,0 +1,37 @@
+// Airworthy rule data for src/Rules/Mcp.ps1 (AW-MCP-004 inline shell or interpreter code).
+// Program names and flags only, stored as separate tokens: no command lines, no payloads, no URLs.
+// Program names are compared after normalization (lower case, no directory, no .exe/.cmd suffix).
+{
+  "cmd": {
+    "programs": ["cmd"],
+    "inlineFlags": ["/c", "/k"],
+    "operators": "&|<>^"
+  },
+  "powershell": {
+    "programs": ["powershell", "pwsh"],
+    "commandFlag": "command",
+    "encodedFlag": "encodedcommand",
+    "encodedAliases": ["ec"],
+    "fileFlags": ["file", "f"]
+  },
+  "posixShells": {
+    "programs": ["bash", "sh", "zsh", "dash", "ksh", "fish", "ash"],
+    "inlineLetter": "c",
+    "valueFlags": ["-o", "+o"]
+  },
+  "wsl": {
+    "programs": ["wsl"],
+    "valueOptions": ["-d", "--distribution", "-u", "--user", "--cd", "--shell-type"],
+    "passThrough": ["-e", "--exec", "--"]
+  },
+  "interpreters": {
+    "python": { "flags": ["-c"], "clusterLetters": ["c"] },
+    "node":   { "flags": ["-e", "--eval", "-p", "--print", "-pe"], "assignFlags": ["--eval", "--print"] },
+    "bun":    { "flags": ["-e", "--eval", "-p", "--print"] },
+    "perl":   { "flags": ["-e", "-E"], "clusterLetters": ["e", "E"] },
+    "ruby":   { "flags": ["-e"], "clusterLetters": ["e"] },
+    "php":    { "flags": ["-r"] },
+    "deno":   { "subcommands": ["eval"] }
+  },
+  "scriptStop": ["-m", "--"]
+}

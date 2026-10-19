@@ -1,0 +1,20 @@
+{
+  "_comment": "Synthetic, benign test values for tests/Html.Tests.ps1. Markup and special characters are kept here as JSON escapes so that the test script holds none. AW-XSS-MARKER only marks text that must stay text; there is no code and no payload. In the *Escaped values, a tilde stands for the backslash of a JSON escape.",
+  "hostile": "\u003c/script\u003e\u003ci\u003eAW-XSS-MARKER\u003c/i\u003e\u003c!--\u003cscript\u003e javascript:void(0) \u2028ls\u2029ps \u0026amp; 'sq' \"dq\" \u202eabc",
+  "badReference": "javascript:void(0)",
+  "badSeverity": "high\" data-aw-marker=\"AW-XSS-MARKER",
+  "badGrade": "\u003ci\u003eF",
+  "rawInData": ["\u003c", "\u003e", "\u0026", "\u2028", "\u2029", "\u003c/script", "\u003cscript", "\u003ci\u003e", "\u003c!--", "javascript:"],
+  "escapedCodes": ["003c", "003e", "0026", "2028", "2029", "003a", "202e"],
+  "rawOutsideData": ["AW-XSS-MARKER", "data-aw-marker", "javascript:"],
+  "forbiddenApis": ["innerHTML", "outerHTML", "insertAdjacentHTML", "createContextualFragment", "document.write", "new Function", "setTimeout", "setInterval", "srcdoc", "DOMParser"],
+  "forbiddenCalls": ["eval", "execScript", "setTimeout", "setInterval", "setImmediate", "Function"],
+  "networkApis": ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "sendBeacon", "Worker", "importScripts", "import(", "window.open", "location", ".src", "http:"],
+  "externalMarkers": ["src=", "\u003clink", "@import", "url(", "http://", "https://", "\u003ciframe", "\u003cobject", "\u003cembed", "\u003cimg", "\u003cbase", "\u003cform"],
+  "nonAscii": "caf\u00e9 \ud83d\ude00 \u4e2d",
+  "nonAsciiEscaped": "caf~u00e9 ~ud83d~ude00 ~u4e2d",
+  "controls": "a\u0000b\u001bc\td\ne\r",
+  "controlsEscaped": "a~u0000b~u001bc~td~ne~r",
+  "fakeToken": "ghp_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE12",
+  "sha256AbcHex": "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD"
+}

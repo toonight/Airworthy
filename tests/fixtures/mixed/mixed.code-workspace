@@ -1,0 +1,13 @@
+{
+  "folders": [
+    { "path": "." }
+  ],
+  "settings": {
+    // Overridden by .vscode/settings.json (workspace folder settings win).
+    "chat.agent.maxRequests": 100,
+    "chat.agent.sandbox.network.allowNetwork": false,
+    "chat.tools.terminal.autoApprove": {
+      "make": true
+    }
+  }
+}

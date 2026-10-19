@@ -1,0 +1,15 @@
+// Synthetic fixture for Airworthy tests: nested notation; overrides the user layer (layers-user).
+{
+  "chat": {
+    "tools": {
+      "terminal": {
+        "autoApprove": {
+          "git push": true
+        }
+      }
+    },
+    "agent": {
+      "maxRequests": 50
+    }
+  }
+}

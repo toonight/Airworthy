@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "user-search": { "type": "http", "url": "https://search.example.invalid/mcp?api_key=FAKEFAKE0123456789key" }
+  },
+  "projects": {
+    "D:/work/alpha": {
+      "mcpServers": {
+        "alpha-db": { "command": "uvx", "args": ["example-db@1.2.0"], "env": { "DB_PASSWORD": "FAKE-db-password-42" } }
+      }
+    }
+  }
+}

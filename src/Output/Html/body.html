@@ -1,0 +1,81 @@
+<body>
+<a class="skip" href="#findings-title">Skip to findings</a>
+<div class="page">
+<header class="masthead">
+  <div class="brand-row">
+    <span class="brand"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="brand-mark" d="M3.5 6A2.5 2.5 0 0 1 6 3.5h5.6c.66 0 1.3.26 1.77.73l6.9 6.9a2.5 2.5 0 0 1 0 3.54l-5.5 5.5a2.5 2.5 0 0 1-3.54 0l-6.9-6.9A2.5 2.5 0 0 1 3.5 11.6z"></path><circle class="brand-hole" cx="8.5" cy="8.5" r="1.9"></circle></svg><span>Airworthy</span><span class="brand-ver" id="aw-version"></span></span>
+    <button type="button" class="theme-toggle" id="aw-theme" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6z"></path></svg><span>Dark theme</span></button>
+  </div>
+  <h1>Harness security report</h1>
+  <p class="root"><span class="sr-only">Analyzed folder: </span><code id="aw-root"></code></p>
+  <dl class="meta">
+    <div><dt>Scanned</dt><dd><time id="aw-time"></time></dd></div>
+    <div><dt>Harnesses detected</dt><dd id="aw-harnesses"></dd></div>
+    <div><dt>Options</dt><dd id="aw-options"></dd></div>
+  </dl>
+</header>
+<main id="aw-main">
+  <noscript><p class="noscript">This report needs JavaScript to show the score and the findings. The results are also embedded as JSON at the end of this file.</p></noscript>
+  <section class="overview" aria-labelledby="overview-title">
+    <h2 id="overview-title" class="sr-only">Overview</h2>
+    <div class="tag" id="aw-tag">
+      <span class="tag-hole" aria-hidden="true"></span>
+      <p class="tag-label">Overall score</p>
+      <div class="seal">
+        <svg class="gauge" id="aw-gauge" viewBox="0 0 200 200" width="180" height="180" role="img" aria-label="Overall score" focusable="false">
+          <circle class="gauge-track" cx="100" cy="100" r="84"></circle>
+          <circle class="gauge-arc" id="aw-arc" cx="100" cy="100" r="84" transform="rotate(-90 100 100)"></circle>
+          <text class="gauge-grade" id="aw-grade" x="100" y="112" text-anchor="middle" aria-hidden="true"></text>
+          <text class="gauge-score" id="aw-score" x="100" y="146" text-anchor="middle" aria-hidden="true"></text>
+        </svg>
+      </div>
+      <p class="tag-verdict" id="aw-verdict"></p>
+      <p class="tag-summary" id="aw-summary"></p>
+      <p class="tag-cap" id="aw-cap" hidden></p>
+      <div class="tag-stub"><span id="aw-stamp-tool"></span><span id="aw-stamp-date"></span></div>
+    </div>
+    <div class="categories">
+      <h3 class="block-title">Score by category</h3>
+      <ul class="cat-grid" id="aw-categories"></ul>
+    </div>
+  </section>
+  <div class="notes" id="aw-notes" hidden></div>
+  <section class="section" aria-labelledby="findings-title">
+    <div class="section-head">
+      <h2 id="findings-title" tabindex="-1">Findings</h2>
+      <p class="status" id="aw-status" role="status" aria-live="polite"></p>
+    </div>
+    <div id="aw-filters">
+      <div class="chips" id="aw-chips" role="group" aria-label="Filter by severity"></div>
+      <div class="controls">
+        <div class="field"><label for="aw-search">Search (press /)</label><input type="search" id="aw-search" placeholder="Rule, file, setting or text" autocomplete="off" spellcheck="false" aria-keyshortcuts="/"></div>
+        <div class="field"><label for="aw-category">Category</label><select id="aw-category" autocomplete="off"><option value="">All categories</option></select></div>
+        <div class="field"><label for="aw-harness">Harness</label><select id="aw-harness" autocomplete="off"><option value="">All harnesses</option></select></div>
+        <div class="field"><label for="aw-sort">Sort by</label><select id="aw-sort" autocomplete="off"><option value="severity">Severity</option><option value="rule">Rule</option><option value="file">File</option></select></div>
+      </div>
+      <div class="list-actions">
+        <button type="button" class="btn" id="aw-expand">Expand all</button>
+        <button type="button" class="btn" id="aw-collapse">Collapse all</button>
+        <button type="button" class="btn" id="aw-reset" hidden>Clear filters</button>
+      </div>
+    </div>
+    <ol class="finding-list" id="aw-findings" aria-labelledby="findings-title"></ol>
+    <div class="empty" id="aw-empty" hidden><p id="aw-empty-text"></p><button type="button" class="btn" id="aw-empty-reset">Clear filters</button></div>
+  </section>
+  <section class="section" aria-labelledby="rules-title">
+    <div class="section-head"><h2 id="rules-title">Rules evaluated</h2></div>
+    <p class="coverage" id="aw-coverage"></p>
+    <div class="table-wrap" id="aw-rules-wrap">
+      <table class="rules-table">
+        <caption class="sr-only">Rules evaluated for the detected harnesses, with their result</caption>
+        <thead><tr><th scope="col">Rule</th><th scope="col">Title</th><th scope="col">Category</th><th scope="col">Harness</th><th scope="col">Severity</th><th scope="col">Confidence</th><th scope="col">Result</th></tr></thead>
+        <tbody id="aw-rules"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<footer class="footer">
+  <p>Generated offline by Airworthy. It reads configuration files only: no agent, MCP server or hook was run, and this page loads nothing from the network.</p>
+  <p>Confidence "medium" marks a rule whose documented behavior is only partly confirmed. Read its description before you act on it.</p>
+</footer>
+</div>

@@ -1,0 +1,72 @@
+// Synthetic HARDENED fixture for Airworthy tests.
+{
+  // Approvals: manual permissions, nothing auto-approved globally
+  "chat.permissions.default": "default",
+  "chat.tools.global.autoApprove": false,
+  "chat.tools.riskAssessment.enabled": true,
+  "chat.tools.urls.autoApprove": {},
+
+  // Terminal: no auto-approval
+  "chat.tools.terminal.enableAutoApprove": false,
+  "chat.tools.terminal.ignoreDefaultAutoApproveRules": false,
+  "chat.tools.terminal.autoApprove": {
+    "Invoke-WebRequest": false,
+    "iwr": false,
+    "Invoke-RestMethod": false,
+    "irm": false,
+    "curl.exe": false,
+    "certutil": false,
+    "bitsadmin": false,
+    "npx": false,
+    "git push": false
+  },
+  "chat.tools.terminal.blockDetectedFileWrites": "outsideWorkspace",
+  "chat.tools.terminal.autoReplyToPrompts": false,
+  "chat.tools.terminal.enforceTimeoutFromModel": true,
+
+  // Control files always need approval before an edit
+  "chat.tools.edits.autoApprove": {
+    "**/.vscode/**": false,
+    "**/.github/agents/**": false,
+    "**/*.agent.md": false,
+    "**/.github/copilot-instructions.md": false,
+    "**/.github/instructions/**": false,
+    "**/.github/prompts/**": false,
+    "**/.github/workflows/**": false,
+    "**/.github/hooks/**": false,
+    "**/.git/**": false,
+    "**/mcp.json": false,
+    "**/.mcp.json": false,
+    "**/.env*": false
+  },
+  "github.copilot.chat.additionalReadAccessFolders": [],
+
+  // Sandbox and network
+  "chat.agent.sandbox.enabled": "on",
+  "chat.agent.sandbox.network.allowNetwork": false,
+  "chat.agent.sandbox.network.allowLocalNetwork": false,
+  "chat.agent.sandbox.allowUnsandboxedCommands": false,
+  "chat.agent.sandbox.allowAutoApprove": false,
+  "chat.agent.sandbox.fileSystem.allowDevToolAccess": false,
+  "chat.agent.sandbox.credentials.authenticategh": false,
+  "chat.agent.sandbox.credentials.authenticategit": false,
+  "chat.agent.sandbox.fileSystem.userConfiguredPaths": {
+    "readwritePaths": [],
+    "readonlyPaths": [],
+    "deniedPaths": ["~/.ssh", "~/.aws", "~/.azure", "~/.docker", "~/.config/gh", "%APPDATA%/gh"]
+  },
+  "chat.agent.networkFilter": true,
+  "chat.agent.allowedNetworkDomains": ["registry.npmjs.org"],
+
+  // MCP
+  "chat.mcp.autostart": "never",
+  "chat.mcp.discovery.enabled": false,
+  "chat.mcp.serverSampling": {},
+
+  // Hooks, loops and telemetry to a local collector
+  "chat.useHooks": true,
+  "chat.agent.maxRequests": 25,
+  "github.copilot.chat.otel.enabled": true,
+  "github.copilot.chat.otel.otlpEndpoint": "http://localhost:4318",
+  "github.copilot.chat.otel.captureContent": false
+}

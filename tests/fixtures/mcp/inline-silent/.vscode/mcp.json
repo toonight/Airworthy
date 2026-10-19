@@ -1,0 +1,16 @@
+// Synthetic AW-MCP-004 fixture: launchers, scripts and modules, none with inline code.
+{
+  "servers": {
+    "cmd-launcher":   { "command": "cmd", "args": ["/c", "npx", "-y", "@example/server@1.0.0"] },
+    "python-script":  { "command": "python", "args": ["server.py", "-c", "config.toml"] },
+    "python-module":  { "command": "python", "args": ["-m", "example_server"] },
+    "python-flags":   { "command": "python", "args": ["-u", "server.py"] },
+    "node-script":    { "command": "node", "args": ["server.js", "-e", "production"] },
+    "ps-file":        { "command": "powershell", "args": ["-NoProfile", "-File", "server.ps1", "-Command", "x"] },
+    "pwsh-file":      { "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-File", "server.ps1"] },
+    "bash-script":    { "command": "bash", "args": ["./start-server.sh"] },
+    "bash-options":   { "command": "bash", "args": ["-o", "pipefail", "./start-server.sh"] },
+    "wsl-script":     { "command": "wsl", "args": ["./server"] },
+    "deno-run":       { "command": "deno", "args": ["run", "server.ts"] }
+  }
+}

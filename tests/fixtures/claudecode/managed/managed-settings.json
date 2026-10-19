@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": ["Read(~/.ssh/**)"]
+  },
+  "allowManagedHooksOnly": true
+}

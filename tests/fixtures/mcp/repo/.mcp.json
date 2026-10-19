@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "local-a": { "command": "node", "args": ["servers/a.js"] },
+    "local-b": { "command": "node", "args": ["servers/b.js"] },
+    "local-c": { "command": "node", "args": ["servers/c.js"] },
+    "local-d": { "command": "node", "args": ["servers/d.js"] },
+    "local-e": { "command": "node", "args": ["servers/e.js"] },
+    "remote-https": { "type": "http", "url": "https://mcp.example.invalid/mcp", "headers": { "Authorization": "Bearer ${EXAMPLE_TOKEN}" } }
+  }
+}

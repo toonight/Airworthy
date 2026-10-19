@@ -1,0 +1,34 @@
+// Synthetic fixture for Airworthy tests: narrow terminal rules and a locked-down sandbox.
+{
+  "chat.tools.riskAssessment.enabled": true,
+  "chat.tools.terminal.enableAutoApprove": true,
+  "chat.tools.terminal.autoReplyToPrompts": false,
+  "chat.tools.terminal.autoApprove": {
+    "npm test": true,
+    "/^git (status|diff|log)\\b/": true,
+    "/^git\\b/": true,
+    "iwr": false,
+    "Invoke-WebRequest": false,
+    "irm": false,
+    "Invoke-RestMethod": false,
+    "Start-BitsTransfer": false,
+    "curl.exe": false,
+    "certutil": false,
+    "bitsadmin": false,
+    "/^(powershell|pwsh)(\\.exe)?\\b/i": false,
+    "npx": false,
+    "git push": false
+  },
+  "chat.agent.sandbox.enabled": "on",
+  "chat.agent.sandbox.network.allowNetwork": false,
+  "chat.agent.sandbox.allowUnsandboxedCommands": false,
+  "chat.agent.sandbox.allowAutoApprove": false,
+  "chat.agent.sandbox.fileSystem.allowDevToolAccess": false,
+  "chat.agent.sandbox.credentials.authenticategh": false,
+  "chat.agent.sandbox.credentials.authenticategit": false,
+  "chat.agent.sandbox.fileSystem.userConfiguredPaths": {
+    "deniedPaths": ["~/.ssh", "%USERPROFILE%\\.aws", "~/.azure", "%APPDATA%/GitHub CLI"]
+  },
+  "chat.agent.networkFilter": true,
+  "chat.agent.allowedNetworkDomains": ["registry.npmjs.org"]
+}

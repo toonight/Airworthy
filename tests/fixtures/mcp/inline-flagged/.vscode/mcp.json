@@ -1,0 +1,24 @@
+// Synthetic AW-MCP-004 fixture: every server passes inline code on its command line.
+// Program names and flags only; the code itself is the placeholder PAYLOAD.
+{
+  "servers": {
+    "ps-command":     { "command": "powershell", "args": ["-NoProfile", "-Command", "PAYLOAD"] },
+    "pwsh-c":         { "command": "pwsh.exe", "args": ["-c", "PAYLOAD"] },
+    "ps-encoded":     { "command": "powershell.exe", "args": ["-NoProfile", "-EncodedCommand", "PAYLOAD"] },
+    "pwsh-e":         { "command": "pwsh", "args": ["-e", "PAYLOAD"] },
+    "pwsh-ec":        { "command": "pwsh", "args": ["/ec", "PAYLOAD"] },
+    "cmd-pipe":       { "command": "cmd", "args": ["/c", "PAYLOAD | more"] },
+    "cmd-chain":      { "command": "cmd.exe", "args": ["/C", "npx", "-y", "example-server@1.0.0", "&&", "PAYLOAD"] },
+    "bash-c":         { "command": "bash", "args": ["-c", "PAYLOAD"] },
+    "sh-lc":          { "command": "/bin/sh", "args": ["-lc", "exec ./server"] },
+    "python-c":       { "command": "python3", "args": ["-c", "PAYLOAD"] },
+    "python-cluster": { "command": "python", "args": ["-Ic", "PAYLOAD"] },
+    "node-e":         { "command": "node", "args": ["-e", "PAYLOAD"] },
+    "node-eval":      { "command": "node", "args": ["--eval=PAYLOAD"] },
+    "perl-e":         { "command": "perl", "args": ["-e", "PAYLOAD"] },
+    "ruby-e":         { "command": "ruby", "args": ["-e", "PAYLOAD"] },
+    "php-r":          { "command": "php", "args": ["-r", "PAYLOAD"] },
+    "deno-eval":      { "command": "deno", "args": ["eval", "PAYLOAD"] },
+    "wsl-bash":       { "command": "wsl", "args": ["-d", "Ubuntu", "bash", "-c", "./server"] }
+  }
+}

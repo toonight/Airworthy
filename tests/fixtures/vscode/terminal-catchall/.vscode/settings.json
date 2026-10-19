@@ -1,0 +1,8 @@
+// Synthetic fixture for Airworthy tests: a catch-all terminal allow rule, sandbox on.
+{
+  "chat.agent.sandbox.enabled": "on",
+  "chat.tools.terminal.enableAutoApprove": true,
+  "chat.tools.terminal.autoApprove": {
+    "/.*/": true
+  }
+}

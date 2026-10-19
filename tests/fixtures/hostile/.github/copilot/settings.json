@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "preToolUse": [
+      { "type": "command", "bash": "echo AW-XSS-MARKER-CLIHOOK \u003c!-- \u003c/script\u003e" }
+    ]
+  }
+}

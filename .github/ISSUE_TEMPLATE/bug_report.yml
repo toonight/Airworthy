@@ -1,0 +1,97 @@
+name: Bug report
+description: A wrong finding (false positive or false negative), a wrong score, a crash or a broken report.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+
+        - **Security vulnerability in Airworthy itself?** Do not open a public issue: follow [SECURITY.md](https://github.com/toonight/Airworthy/security/policy).
+        - **Never paste a real secret, token, internal host name, user name or private path.** Reports quote evidence from the scanned files: run with `-Redact`, and replace every secret with a fake value such as `ghp_FAKE...`.
+  - type: input
+    id: version
+    attributes:
+      label: Airworthy version
+      description: Shown at the top of the console report, or by `(Import-Module ./Airworthy.psd1 -PassThru).Version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: powershell
+    attributes:
+      label: PowerShell version
+      options:
+        - Windows PowerShell 5.1
+        - PowerShell 7.x
+        - Other (say which in the description)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 24H2"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - VS Code GitHub Copilot (custom agents, agent mode settings)
+        - Claude Code
+        - Copilot CLI
+        - MCP servers
+        - Secrets
+        - Scoring and grade
+        - Output (console, JSON, SARIF, Markdown, HTML)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: Rule ID
+      description: The rule involved, if any.
+      placeholder: "AW-VSC-001"
+  - type: textarea
+    id: command
+    attributes:
+      label: Command line
+      description: The exact command you ran.
+      placeholder: ".\\airworthy.ps1 -Path . -NoUserProfile -Redact"
+      render: powershell
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The finding, score, error message or report problem you got.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal configuration that reproduces it
+      description: The smallest synthetic file (settings.json, mcp.json, agent file...) that shows the problem, with its path relative to the analyzed folder. Fake values only.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: This issue contains no real secret, token, internal host name, user name or private path.
+          required: true
+        - label: This is not a security vulnerability in Airworthy (those go through SECURITY.md).
+          required: true
+        - label: I searched the existing issues.
+          required: false

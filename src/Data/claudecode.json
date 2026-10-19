@@ -1,0 +1,34 @@
+// Airworthy rule data for src/Rules/ClaudeCode.ps1.
+// Program names and setting keys only, stored as separate tokens: no command lines, no payloads, no URLs.
+{
+  // AW-CC-003 / AW-CC-008: a wildcard rule on one of these programs runs arbitrary code.
+  // Compared case-insensitively, with an optional .exe suffix and an optional leading "sudo".
+  "runnerPrograms": [
+    "bash", "sh", "zsh", "dash", "fish", "cmd", "powershell", "pwsh",
+    "python", "py", "node", "deno", "bun", "perl", "ruby", "php",
+    "npx", "bunx", "uvx", "eval", "exec", "env", "xargs", "ssh",
+    "invoke-expression", "iex", "start-process", "invoke-command"
+  ],
+  // Programs also matched with a version suffix (python3, python3.12).
+  "versionedPrograms": ["python"],
+  // Program and subcommand pairs that run arbitrary code.
+  "runnerSubcommands": [
+    ["docker", "run"], ["docker", "exec"], ["podman", "run"], ["podman", "exec"],
+    ["devbox", "run"], ["direnv", "exec"], ["mise", "exec"], ["uv", "run"], ["npm", "exec"]
+  ],
+  "privilegePrefixes": ["sudo"],
+
+  // AW-CC-007: settings whose string value is a command line that Claude Code runs.
+  "helperCommandKeys": ["apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "otelHeadersHelper"],
+  // AW-CC-007: settings of shape { "type": "command", "command": "..." } (gated like hooks).
+  "commandObjectKeys": ["statusLine", "fileSuggestion"],
+
+  // AW-CC-008: sandbox keys that weaken the sandbox when a repository sets them to true.
+  "sandboxWeakeningFlags": [
+    "enableWeakerNestedSandbox", "enableWeakerNetworkIsolation",
+    "network.allowAllUnixSockets", "network.allowLocalBinding"
+  ],
+
+  // AW-CC-001 / AW-CC-002: defaultMode values that do not take effect from project or local settings.
+  "projectIgnoredModes": ["auto", "bypassPermissions"]
+}
