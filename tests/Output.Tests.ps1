@@ -296,7 +296,8 @@ Describe 'ConvertTo-AwSarif' {
         Assert-Equal '0.1.0' $driver.version
         Assert-Equal 'https://github.com/toonight/Airworthy' $driver.informationUri
         Assert-True $run.invocations[0].executionSuccessful
-        Assert-Equal '2026-10-18T12:00:00Z' $run.invocations[0].endTimeUtc
+        # Read the raw text: ConvertFrom-Json in PowerShell 7 turns ISO 8601 strings into DateTime.
+        Assert-Match $sarifText '"endTimeUtc"\s*:\s*"2026-10-18T12:00:00Z"'
     }
     It 'lists every evaluated rule once, sorted, plus the rules that only appear in findings' {
         $ids = @($run.tool.driver.rules | ForEach-Object { $_.id })

@@ -118,7 +118,12 @@ function Get-AwDisplayPath {
     $root = [string](Get-AwMemberValue $Ctx 'Root')
     $userProfile = [string](Get-AwMemberValue $Ctx 'UserProfile')
     $full = $Path
-    try { if ([System.IO.Path]::IsPathRooted($Path)) { $full = [System.IO.Path]::GetFullPath($Path) } } catch { $full = $Path }
+    # Normalize only paths with '.' or '..' segments. GetFullPath differs between .NET Framework
+    # (throws on characters such as '<') and .NET Core (rewrites '/' inside names to '\'), and the
+    # paths from discovery are already absolute and normalized.
+    if ($Path -match '(^|[\\/])\.{1,2}([\\/]|$)') {
+        try { if ([System.IO.Path]::IsPathRooted($Path)) { $full = [System.IO.Path]::GetFullPath($Path) } } catch { $full = $Path }
+    }
     if ($root -and [System.IO.Path]::IsPathRooted($root)) {
         $rel = Get-AwRelativePath -Path $full -Base $root
         if ($null -ne $rel) { return $rel }
@@ -132,9 +137,13 @@ function Get-AwPathLabel {
     # the path has no leaf name (a drive root). -Redact shows the analyzed root this way.
     param([AllowNull()] [AllowEmptyString()] [string]$Path, [string]$UserProfile)
     if ([string]::IsNullOrEmpty($Path)) { return $Path }
-    $leaf = ''
-    try { $leaf = [System.IO.Path]::GetFileName($Path.TrimEnd([char[]]@('\', '/'))) } catch { $leaf = '' }
-    if ([string]::IsNullOrEmpty($leaf)) { return '.' }
+    # Split by hand: .NET Core treats '\\server\share' as a root with no file name, .NET Framework
+    # returns 'share'. A drive root ('D:\') or '/' has no leaf.
+    $trimmed = $Path.TrimEnd([char[]]@('\', '/'))
+    if ($trimmed -eq '' -or $trimmed -match '^[A-Za-z]:$') { return '.' }
+    $leaf = @($trimmed -split '[\\/]' | Where-Object { $_ -ne '' } | Select-Object -Last 1)
+    $leaf = if ($leaf.Count -gt 0) { [string]$leaf[0] } else { '' }
+    if ([string]::IsNullOrEmpty($leaf) -or $leaf -match '^[A-Za-z]:$') { return '.' }
     return (Hide-AwUserInPath -Path $leaf -UserProfile $UserProfile)
 }
 
